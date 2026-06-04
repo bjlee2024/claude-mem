@@ -106,4 +106,46 @@ describe('ServerViewerDataRoutes (viewer data API)', () => {
     expect(body.items).toHaveLength(1);
     expect(body.hasMore).toBe(false);
   });
+
+  it('GET /api/stats returns counts', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/stats`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.totalObservations).toBe(3);
+    expect(body.totalSessions).toBe(0);
+    expect(body.totalSummaries).toBe(0);
+    expect(body.firstObservationAt).toBeTruthy();
+  });
+
+  it('GET /api/projects returns names + projectsBySource', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/projects`);
+    const body = await res.json() as any;
+    expect(body.projects).toEqual(['proj-a']);
+    expect(body.projectsBySource.claude).toEqual(['proj-a']);
+  });
+
+  it('GET /api/processing-status returns idle with no jobs', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/processing-status`);
+    const body = await res.json() as any;
+    expect(body).toEqual({ isProcessing: false, queueDepth: 0 });
+  });
+
+  it('GET /api/summaries returns empty page when no summary-kind rows', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/summaries?limit=10&offset=0`);
+    const body = await res.json() as any;
+    expect(body.items).toEqual([]);
+    expect(body.hasMore).toBe(false);
+  });
+
+  it('GET /api/prompts returns an empty page (stub)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/prompts`);
+    const body = await res.json() as any;
+    expect(body).toEqual({ items: [], hasMore: false, offset: 0, limit: 50 });
+  });
+
+  it('GET /api/settings returns {} (viewer applies defaults)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/settings`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+  });
 });
