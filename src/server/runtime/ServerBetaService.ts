@@ -20,6 +20,7 @@ import { SessionsObservationsAdapter } from '../compat/SessionsObservationsAdapt
 import { SessionsSummarizeAdapter } from '../compat/SessionsSummarizeAdapter.js';
 import { ActiveServerBetaQueueManager } from './ActiveServerBetaQueueManager.js';
 import { ServerViewerRoutes } from './ServerViewerRoutes.js';
+import { ServerViewerDataRoutes } from './ServerViewerDataRoutes.js';
 import type { ServerBetaServiceGraph, ServerBetaQueueLaneMetric } from './types.js';
 
 const SERVER_BETA_RUNTIME = 'server-beta';
@@ -204,6 +205,10 @@ export class ServerBetaService {
       authMode: compatAuthMode,
     }));
 
+    // Viewer data API (read-only, no auth) — must be registered BEFORE the
+    // static viewer handler so /api/* resolves to JSON, not the SPA. Backed by
+    // the same Postgres pool the rest of the runtime uses.
+    server.registerRoutes(new ServerViewerDataRoutes(this.graph.postgres.pool));
     // #2552 — mount the Viewer UI static handler so the viewer loads on the
     // server runtime. Registered AFTER the /v1 and compat API routes so the
     // viewer's own API calls resolve against those; express.static only
