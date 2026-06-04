@@ -74,14 +74,16 @@ describe('ServerViewerDataRoutes (viewer data API)', () => {
     server = new Server(baseServerOptions());
     server.registerRoutes(new ServerViewerDataRoutes(client));
     server.finalizeRoutes();
-    port = 43000 + Math.floor(Math.random() * 9000);
-    await server.listen(port, '127.0.0.1');
+    await server.listen(0, '127.0.0.1');
+    const address = server.getHttpServer()?.address();
+    if (!address || typeof address === 'string') throw new Error('no port');
+    port = address.port;
   });
 
   afterEach(async () => {
     if (server?.getHttpServer()) { try { await server.close(); } catch { /* ignore */ } }
     try { await client.query(`DROP SCHEMA ${quoteIdentifier(schemaName)} CASCADE`); } catch { /* ignore */ }
-    client.release();
+    client?.release?.();
     await pool.end();
     loggerSpies.forEach(s => s.mockRestore());
     loggerSpies = [];
@@ -93,7 +95,7 @@ describe('ServerViewerDataRoutes (viewer data API)', () => {
     const body = await res.json() as { items: any[]; hasMore: boolean; offset: number; limit: number };
     expect(body.hasMore).toBe(true);
     expect(body.items).toHaveLength(2);
-    expect(body.items[0].content === undefined).toBe(true);
+    expect(body.items[0].content).toBeUndefined();
     expect(body.items[0].text).toBe('content 2');
     expect(body.items[0].project).toBe('proj-a');
     expect(body.items[0].facts).toBe('["f2"]');
