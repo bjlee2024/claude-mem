@@ -132,8 +132,9 @@ export class ServerViewerDataRoutes implements RouteHandler {
       const items = rows.slice(0, limit).map(mapObservationToViewer);
       res.json({ items, hasMore, offset, limit });
     } catch (err) {
-      logger.error('SYSTEM', 'viewer /api/observations failed', { error: String(err) });
-      res.status(500).json({ error: 'InternalError', message: 'Failed to list observations' });
+      const label = summariesOnly ? 'summaries' : 'observations';
+      logger.error('SYSTEM', `viewer /api/${label} failed`, { error: String(err) });
+      res.status(500).json({ error: 'InternalError', message: `Failed to list ${label}` });
     }
   }
 
