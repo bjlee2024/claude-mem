@@ -32,11 +32,14 @@ export class ClientWriter {
   }
 
   async recordToolUse(input: RecordToolUseInput): Promise<void> {
+    // Capture the tool-use time ONCE so a spooled (offline) event keeps the
+    // real occurrence time, not the time it was later queued or replayed.
+    const occurredAtEpoch = Date.now();
     let projectId: string;
     try {
       projectId = await this.projectId(input.cwd);
     } catch {
-      this.spoolEvent(input);
+      this.spoolEvent(input, occurredAtEpoch);
       return;
     }
     try {
@@ -45,20 +48,20 @@ export class ClientWriter {
         contentSessionId: input.sessionId,
         sourceType: 'hook',
         eventType: 'tool_use',
-        occurredAtEpoch: Date.now(),
+        occurredAtEpoch,
         sourceEventId: input.sourceEventId,
         payload: input.payload,
       });
     } catch (error) {
       if (isServerBetaClientError(error) && error.isFallbackEligible()) {
-        this.spoolEvent(input);
+        this.spoolEvent(input, occurredAtEpoch);
       } else {
         logger.error('HOOK', 'client write permanent failure', { error: String(error) });
       }
     }
   }
 
-  private spoolEvent(input: RecordToolUseInput): void {
+  private spoolEvent(input: RecordToolUseInput, occurredAtEpoch: number): void {
     const record: SpoolRecord = {
       id: input.sourceEventId,
       kind: 'event',
@@ -67,7 +70,7 @@ export class ClientWriter {
         contentSessionId: input.sessionId,
         sourceType: 'hook',
         eventType: 'tool_use',
-        occurredAtEpoch: Date.now(),
+        occurredAtEpoch,
         sourceEventId: input.sourceEventId,
         payload: input.payload,
       },
