@@ -18,11 +18,10 @@ provider API key.**
 
 <Note>
 **Installing the CLI.** The commands below use this fork's package
-`@bjlee2024/claude-mem`. Before it's published to npm, run the same commands
-straight from GitHub — replace `npx @bjlee2024/claude-mem` with
-`npx github:bjlee2024/claude-mem`. Server-side commands that touch the database
-(`server enroll`, `install --mode server`) currently require **Bun**; run those on
-the server host from a local clone: `bun dist/npx-cli/index.js …`.
+`@bjlee2024/claude-mem`. As an alternative to npm you can run them straight from
+GitHub — replace `npx @bjlee2024/claude-mem` with `npx github:bjlee2024/claude-mem`.
+(Server-side database commands like `server enroll` need network access to the
+server's Postgres, so run them on the server host.)
 </Note>
 
 ## When to use it

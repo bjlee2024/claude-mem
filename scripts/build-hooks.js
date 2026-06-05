@@ -469,7 +469,12 @@ async function buildHooks() {
       target: 'node18',
       format: 'esm',
       outfile: `${npxCliOutDir}/index.js`,
-      banner: { js: '#!/usr/bin/env node' },
+      // ESM bundle: esbuild's __require shim only delegates to a real `require`
+      // when one exists in scope (`typeof require !== "undefined"`). Bun provides
+      // a global require so dynamic require() works; plain Node ESM does not, so
+      // a bundled dep's dynamic require('events') throws "Dynamic require ... not
+      // supported" during `npx … install`. Inject createRequire so Node has one.
+      banner: { js: "#!/usr/bin/env node\nimport { createRequire as __cmCreateRequire } from 'node:module';\nconst require = __cmCreateRequire(import.meta.url);" },
       minify: true,
       logLevel: 'error',
       external: [
