@@ -6,6 +6,13 @@ import pc from 'picocolors';
 import { resolveBunBinaryPath } from '../utils/bun-resolver.js';
 import { isPluginInstalled, marketplaceDirectory } from '../utils/paths.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
+import {
+  selectRuntime,
+  buildClientRuntimeContext,
+  buildServerBetaContext,
+} from '../../services/hooks/runtime-selector.js';
+import { ProjectResolver } from '../../services/hooks/project-resolver.js';
+import { DATA_DIR } from '../../shared/paths.js';
 
 function ensureInstalledOrExit(): void {
   if (!isPluginInstalled()) {
@@ -185,6 +192,51 @@ export async function runSearchCommand(queryParts: string[]): Promise<void> {
     process.exit(1);
   }
 
+  const runtime = selectRuntime();
+
+  if (runtime === 'client' || runtime === 'server-beta') {
+    // Route to remote server's /v1/search endpoint via ServerBetaClient.
+    const ctx = runtime === 'server-beta' ? buildServerBetaContext() : buildClientRuntimeContext();
+    if (!ctx) {
+      console.error(pc.red(
+        runtime === 'server-beta'
+          ? 'server-beta runtime selected but configuration is incomplete (missing CLAUDE_MEM_SERVER_BETA_URL, CLAUDE_MEM_SERVER_BETA_API_KEY, or CLAUDE_MEM_SERVER_BETA_PROJECT_ID).'
+          : 'client runtime selected but CLAUDE_MEM_SERVER_BETA_URL or CLAUDE_MEM_SERVER_BETA_API_KEY is missing.',
+      ));
+      process.exit(1);
+    }
+
+    let projectId = ctx.projectId;
+    if (!projectId) {
+      // client mode with no fixed project — resolve from current repo name
+      const resolver = new ProjectResolver({ client: ctx.client, mapPath: join(DATA_DIR, 'project-map.json') });
+      try {
+        projectId = await resolver.resolve(process.cwd());
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(pc.red(`Failed to resolve project from cwd: ${message}`));
+        process.exit(1);
+      }
+    }
+
+    let data: unknown;
+    try {
+      data = await ctx.client.searchObservations({ projectId, query });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(pc.red(`Search failed: ${message}`));
+      process.exit(1);
+    }
+
+    if (typeof data === 'object' && data !== null) {
+      console.log(JSON.stringify(data, null, 2));
+    } else {
+      console.log(data);
+    }
+    return;
+  }
+
+  // Worker path (runtime === 'worker') — unchanged.
   const workerPort = SettingsDefaultsManager.get('CLAUDE_MEM_WORKER_PORT');
   const searchUrl = `http://127.0.0.1:${workerPort}/api/search?query=${encodeURIComponent(query)}`;
 

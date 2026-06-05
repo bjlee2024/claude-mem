@@ -105,9 +105,9 @@ describe('MCP tool inputSchema declarations', () => {
     expect(memoryContext).toContain('handleObservationContext');
   });
 
-  it('mcp-server skips worker auto-start when runtime=server-beta (anti-pattern guard)', async () => {
+  it('mcp-server skips worker auto-start when runtime=server-beta or client (anti-pattern guard)', async () => {
     const src = await Bun.file(mcpServerPath).text();
-    expect(src).toContain("selectRuntime() === 'server-beta'");
+    expect(src).toContain("selectRuntime() !== 'worker'");
     expect(src).toContain('skipping worker auto-start');
   });
 

@@ -35,9 +35,14 @@ import {
 import {
   selectRuntime,
   buildServerBetaContext,
+  buildClientRuntimeContext,
   type SelectedRuntime,
   type ServerBetaRuntimeContext,
+  type ClientRuntimeContext,
 } from '../services/hooks/runtime-selector.js';
+import { ProjectResolver } from '../services/hooks/project-resolver.js';
+import { DATA_DIR } from '../shared/paths.js';
+import { join } from 'node:path';
 
 let mcpServerDirResolutionFailed = false;
 const mcpServerDir = (() => {
@@ -174,34 +179,51 @@ async function verifyWorkerConnection(): Promise<boolean> {
 // We deliberately resolve the runtime per-call (cheap; reads cached
 // settings) so the user can flip CLAUDE_MEM_RUNTIME without restarting
 // the MCP server.
-type ServerBetaToolContext = ServerBetaRuntimeContext;
+type ServerBetaToolContext = ServerBetaRuntimeContext | ClientRuntimeContext;
 
 interface ServerBetaUnavailable {
-  runtime: 'server-beta';
+  runtime: 'server-beta' | 'client';
   available: false;
   reason: string;
 }
 
-interface ServerBetaAvailable extends ServerBetaToolContext {
+interface ServerBetaAvailable extends Omit<ServerBetaRuntimeContext, 'projectId'> {
+  available: true;
+  projectId: string | null;
+}
+
+interface ClientAvailable extends ClientRuntimeContext {
   available: true;
 }
 
-type ServerBetaResolution = ServerBetaAvailable | ServerBetaUnavailable;
+type ServerBetaResolution = ServerBetaAvailable | ClientAvailable | ServerBetaUnavailable;
 
 function resolveServerBetaToolContext(): ServerBetaResolution | null {
   const runtime: SelectedRuntime = selectRuntime();
-  if (runtime !== 'server-beta') {
-    return null;
+  if (runtime === 'server-beta') {
+    const ctx = buildServerBetaContext();
+    if (!ctx) {
+      return {
+        runtime: 'server-beta',
+        available: false,
+        reason: 'server-beta is selected but configuration is incomplete (missing url, api key, or project id)',
+      };
+    }
+    return { ...ctx, available: true };
   }
-  const ctx = buildServerBetaContext();
-  if (!ctx) {
-    return {
-      runtime: 'server-beta',
-      available: false,
-      reason: 'server-beta is selected but configuration is incomplete (missing url, api key, or project id)',
-    };
+  if (runtime === 'client') {
+    const ctx = buildClientRuntimeContext();
+    if (!ctx) {
+      return {
+        runtime: 'client',
+        available: false,
+        reason: 'client runtime selected but CLAUDE_MEM_SERVER_BETA_URL or CLAUDE_MEM_SERVER_BETA_API_KEY is missing',
+      };
+    }
+    return { ...ctx, available: true };
   }
-  return { ...ctx, available: true };
+  // runtime === 'worker'
+  return null;
 }
 
 function formatToolError(error: unknown): { content: Array<{ type: 'text'; text: string }>; isError: true } {
@@ -232,18 +254,32 @@ function formatJsonResult(payload: unknown): { content: Array<{ type: 'text'; te
   };
 }
 
-function requireServerBetaForObservationTool(toolName: string): ServerBetaAvailable {
+type ObservationToolContext = { client: ServerBetaClient; projectId: string | null; runtime: 'server-beta' | 'client' };
+
+function requireServerBetaForObservationTool(toolName: string): ObservationToolContext {
   const resolution = resolveServerBetaToolContext();
   if (!resolution) {
     throw new ServerBetaClientError(
       'transport',
-      `${toolName} requires CLAUDE_MEM_RUNTIME=server-beta. Current runtime is "worker"; use the existing search/timeline/get_observations tools for worker-mode memory access.`,
+      `${toolName} requires CLAUDE_MEM_RUNTIME=server-beta or CLAUDE_MEM_RUNTIME=client. Current runtime is "worker"; use the existing search/timeline/get_observations tools for worker-mode memory access.`,
     );
   }
   if (!resolution.available) {
     throw new ServerBetaClientError('missing_api_key', `${toolName}: ${resolution.reason}`);
   }
   return resolution;
+}
+
+async function effectiveProjectId(
+  ctx: { client: ServerBetaClient; projectId: string | null },
+  argProjectId?: string,
+): Promise<string> {
+  const arg = argProjectId?.trim();
+  if (arg) return arg;
+  if (ctx.projectId) return ctx.projectId;
+  // client mode: no fixed project — resolve the current repo's project by name
+  const resolver = new ProjectResolver({ client: ctx.client, mapPath: join(DATA_DIR, 'project-map.json') });
+  return resolver.resolve(process.cwd());
 }
 
 interface ObservationAddArgs {
@@ -262,7 +298,7 @@ async function handleObservationAdd(
     if (typeof args?.content !== 'string' || args.content.trim().length === 0) {
       throw new Error('observation_add: "content" is required');
     }
-    const projectId = args.projectId && args.projectId.trim().length > 0 ? args.projectId : ctx.projectId;
+    const projectId = await effectiveProjectId(ctx, args.projectId);
     const request: ServerBetaAddObservationRequest = {
       projectId,
       content: args.content,
@@ -297,7 +333,7 @@ async function handleObservationRecordEvent(
     if (typeof args?.eventType !== 'string' || args.eventType.trim().length === 0) {
       throw new Error('observation_record_event: "eventType" is required');
     }
-    const projectId = args.projectId && args.projectId.trim().length > 0 ? args.projectId : ctx.projectId;
+    const projectId = await effectiveProjectId(ctx, args.projectId);
     const request: ServerBetaRecordEventRequest = {
       projectId,
       sourceType: args.sourceType ?? 'api',
@@ -330,7 +366,7 @@ async function handleObservationSearch(
     if (typeof args?.query !== 'string' || args.query.trim().length === 0) {
       throw new Error('observation_search: "query" is required');
     }
-    const projectId = args.projectId && args.projectId.trim().length > 0 ? args.projectId : ctx.projectId;
+    const projectId = await effectiveProjectId(ctx, args.projectId);
     const request: ServerBetaSearchObservationsRequest = {
       projectId,
       query: args.query,
@@ -357,7 +393,7 @@ async function handleObservationContext(
     if (typeof args?.query !== 'string' || args.query.trim().length === 0) {
       throw new Error('observation_context: "query" is required');
     }
-    const projectId = args.projectId && args.projectId.trim().length > 0 ? args.projectId : ctx.projectId;
+    const projectId = await effectiveProjectId(ctx, args.projectId);
     const request: ServerBetaContextObservationsRequest = {
       projectId,
       query: args.query,
@@ -1023,12 +1059,12 @@ async function main() {
   startParentHeartbeat();
 
   setTimeout(async () => {
-    // Phase 8 — when CLAUDE_MEM_RUNTIME=server-beta, MCP must NOT auto-start
-    // the worker. observation_* tools talk to server-beta directly; the
-    // legacy worker-backed tools (search/timeline/get_observations) will
-    // simply error with a helpful message until the user switches runtime.
-    if (selectRuntime() === 'server-beta') {
-      logger.info('SYSTEM', 'MCP runtime=server-beta — skipping worker auto-start', undefined, {});
+    // Phase 8 — when CLAUDE_MEM_RUNTIME=server-beta or client, MCP must NOT
+    // auto-start the worker. observation_* tools talk to server-beta/client
+    // directly; the legacy worker-backed tools (search/timeline/get_observations)
+    // will simply error with a helpful message until the user switches runtime.
+    if (selectRuntime() !== 'worker') {
+      logger.info('SYSTEM', 'MCP runtime=server-beta/client — skipping worker auto-start', undefined, {});
       return;
     }
     const workerAvailable = await ensureWorkerConnection();
