@@ -8,7 +8,8 @@ import { logger } from '../../utils/logger.js';
 import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
-import { resolveRuntimeContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
+import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
+import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 
 async function dispatchToWorker(
@@ -61,6 +62,29 @@ export const observationHandler: EventHandler = {
     }
 
     const runtime = resolveRuntimeContext();
+    if (runtime.runtime === 'client') {
+      const { writer, spool, client } = buildClientContext(runtime);
+      try {
+        await spool.flush(makeSpoolSender({ client }));
+      } catch {
+        /* flush is best-effort; never block the write */
+      }
+      await writer.recordToolUse({
+        cwd,
+        sessionId,
+        sourceEventId: crypto.randomUUID(),
+        payload: {
+          tool_name: toolName,
+          tool_input: toolInput,
+          tool_response: toolResponse,
+          cwd,
+          agentId: input.agentId,
+          agentType: input.agentType,
+          platformSource,
+        },
+      });
+      return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
+    }
     if (runtime.runtime === 'server-beta') {
       try {
         await runtime.client.recordEvent({
