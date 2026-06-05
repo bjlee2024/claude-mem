@@ -455,6 +455,47 @@ export class ServerV1PostgresRoutes implements RouteHandler {
       }
     }));
 
+    // POST /v1/projects/resolve — resolve-or-create a project by name within
+    // the caller's team. Requires a team-scoped api key (project_id NULL on
+    // the key). Uses ON CONFLICT upsert so concurrent callers are idempotent.
+    app.post('/v1/projects/resolve', writeAuth, this.handleCreate(
+      z.object({ name: z.string().min(1).max(200) }),
+      async (req, res, body) => {
+        const teamId = this.requireTeamId(req, res);
+        if (!teamId) return;
+        // A project-scoped api key must not create new projects — that would
+        // let a single-repo key silently escape its project boundary.
+        if (req.authContext?.projectId) {
+          res.status(403).json({
+            error: 'Forbidden',
+            message: 'project.resolve requires a team-scoped api key (no project binding)',
+          });
+          return;
+        }
+        try {
+          const result = await this.options.pool.query<{ id: string }>(
+            `INSERT INTO projects (id, team_id, name)
+             VALUES (gen_random_uuid(), $1, $2)
+             ON CONFLICT (team_id, name) DO UPDATE SET name = EXCLUDED.name
+             RETURNING id`,
+            [teamId, body.name],
+          );
+          const row = result.rows[0];
+          if (!row) {
+            res.status(500).json({ error: 'InternalError', message: 'Failed to resolve project' });
+            return;
+          }
+          await this.auditWrite(req, 'project.resolve', row.id, row.id, {
+            name: body.name,
+            teamId,
+          });
+          res.status(200).json({ id: row.id });
+        } catch (error) {
+          this.handleDbError(error, res, 'project.resolve');
+        }
+      },
+    ));
+
     // Phase 11 — project-scoped queue listing. Project-scoped api keys MAY
     // read this; team-scoped keys MAY read any project under their team.
     // Cross-tenant requests are reported as 404, matching the rest of the
@@ -1582,6 +1623,7 @@ function resolveAuditResourceType(action: string): string {
     'generation_job.retried_by_operator': 'observation_generation_job',
     'generation_job.cancelled_by_operator': 'observation_generation_job',
     'generation_job.stalled': 'observation_generation_job',
+    'project.resolve': 'project',
   };
   if (map[action]) return map[action]!;
   return action.split('.')[0] ?? 'unknown';
