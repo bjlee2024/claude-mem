@@ -173,6 +173,33 @@ If the server is down or the network drops:
 
 Context injection (recall) is skipped while offline, since reads come from the server.
 
+## Generation with a subscription (no API cost)
+
+By default the server's worker generates observations with a metered
+`ANTHROPIC_API_KEY`. You can instead use a **Claude subscription**, so generation
+costs nothing per token.
+
+```bash
+# 1. On the host, mint a long-lived OAuth token (interactive login, ~1 year):
+claude setup-token            # prints sk-ant-oat01-...
+
+# 2. Point the worker at subscription mode + the token (use a .env or secret file):
+echo 'CLAUDE_MEM_SERVER_PROVIDER=subscription' >> .env
+echo 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...' >> .env
+
+# 3. Restart the stack:
+sudo systemctl restart claude-mem      # or: docker compose up -d
+
+# 4. Confirm the worker is generating (and no longer restart-looping):
+docker compose -p claude-mem logs -f claude-mem-worker
+```
+
+<Note>
+The token lasts about a year — re-run `claude setup-token` and update the env when
+it expires. If you see `auth_invalid` errors in the worker logs, the token has
+expired or is wrong.
+</Note>
+
 ## Notes & limits
 
 - **One trusted network.** These modes assume a single owner on a trusted tailnet. The
