@@ -52,3 +52,6 @@ docker/install-test/
 
 # Local session report artifacts (not part of distribution)
 reports/
+
+# Local deploy compose (contains local credentials/defaults — keep out of the repo)
+docker-compose.my.yml
