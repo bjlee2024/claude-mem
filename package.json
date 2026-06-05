@@ -1,6 +1,6 @@
 {
   "name": "@bjlee2024/claude-mem",
-  "version": "13.4.4",
+  "version": "13.4.5",
   "description": "Memory compression system for Claude Code - persist context across sessions",
   "keywords": [
     "claude",
@@ -145,6 +145,9 @@
     "yaml": "^2.8.4",
     "zod": "^4.4.3",
     "zod-to-json-schema": "^3.25.2"
+  },
+  "overrides": {
+    "tree-sitter": "^0.25.0"
   },
   "devDependencies": {
     "@derekstride/tree-sitter-sql": "^0.3.11",
