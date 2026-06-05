@@ -290,4 +290,10 @@ CREATE INDEX IF NOT EXISTS idx_observation_jobs_event ON observation_generation_
 CREATE INDEX IF NOT EXISTS idx_observation_jobs_source ON observation_generation_jobs(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_observation_job_events_job_created ON observation_generation_job_events(generation_job_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_scope_created ON audit_log(project_id, team_id, created_at);
+-- Client/server split: per-repo project resolution requires names to be unique
+-- within a team so POST /v1/projects/resolve can upsert by (team_id, name).
+-- NOTE: on shared/existing servers with duplicate (team_id, name) rows this
+-- index creation would fail; duplicates must be collapsed first (this host
+-- has none).
+CREATE UNIQUE INDEX IF NOT EXISTS projects_team_name_uniq ON projects (team_id, name);
 `;
