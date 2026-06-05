@@ -39,11 +39,11 @@ const OK_BODY = {
 
 describe('ClaudeSubscriptionObservationProvider', () => {
   it('sends OAuth Bearer + anthropic-beta and NO x-api-key', async () => {
-    let captured: { url: string; headers: Record<string, string> } | null = null;
+    let captured: { url: string; headers: Record<string, string>; body: any } | null = null;
     const fetchImpl = (async (url: any, init: any) => {
       const h: Record<string, string> = {};
       for (const [k, v] of Object.entries(init.headers)) h[k.toLowerCase()] = String(v);
-      captured = { url: String(url), headers: h };
+      captured = { url: String(url), headers: h, body: JSON.parse(init.body) };
       return jsonResponse(OK_BODY);
     }) as unknown as typeof fetch;
 
@@ -54,6 +54,9 @@ describe('ClaudeSubscriptionObservationProvider', () => {
     expect(captured!.headers['authorization']).toBe('Bearer sk-ant-oat01-abc');
     expect(captured!.headers['anthropic-beta']).toBeTruthy();
     expect('x-api-key' in captured!.headers).toBe(false);
+    // OAuth tokens only work when the request identifies as Claude Code — the API
+    // returns a misleading rate_limit_error without this exact system prompt.
+    expect(captured!.body.system).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
     expect(result.rawText).toBe('<observation>ok</observation>');
     expect(result.tokensUsed).toBe(15);
     expect(result.providerLabel).toBe('claude');

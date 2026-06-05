@@ -28,6 +28,14 @@ import type {
 // changes the value (verify a live 200 during deploy).
 const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
 
+// REQUIRED for OAuth (subscription) tokens: the public Messages API only honors a
+// Claude Code OAuth token when the request identifies as Claude Code. Without this
+// exact system identity the API returns a misleading `rate_limit_error` even when
+// the account is well under its limits. Verified live: same request 429s without
+// this line and returns 200 with it. The generation task itself stays in the user
+// message, so this only opens the OAuth gate.
+const CLAUDE_CODE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
+
 export interface ClaudeSubscriptionObservationProviderOptions {
   oauthToken: string;
   model?: string;
@@ -83,6 +91,7 @@ export class ClaudeSubscriptionObservationProvider implements ServerGenerationPr
           model: this.model,
           max_tokens: this.maxOutputTokens,
           temperature: 0.3,
+          system: CLAUDE_CODE_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: prompt }],
         }),
         signal,
