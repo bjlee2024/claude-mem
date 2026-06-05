@@ -10,6 +10,7 @@ import { getRedisQueueConfig } from '../queue/redis-config.js';
 import { ActiveServerBetaQueueManager } from './ActiveServerBetaQueueManager.js';
 import { ActiveServerBetaGenerationWorkerManager } from './ActiveServerBetaGenerationWorkerManager.js';
 import { ClaudeObservationProvider } from '../generation/providers/ClaudeObservationProvider.js';
+import { ClaudeSubscriptionObservationProvider } from '../generation/providers/ClaudeSubscriptionObservationProvider.js';
 import { GeminiObservationProvider } from '../generation/providers/GeminiObservationProvider.js';
 import { OpenRouterObservationProvider } from '../generation/providers/OpenRouterObservationProvider.js';
 import type { ServerGenerationProvider } from '../generation/providers/shared/types.js';
@@ -236,7 +237,7 @@ function buildGenerationWorkerManager(
   });
 }
 
-function buildServerGenerationProviderFromEnv(): ServerGenerationProvider | null {
+export function buildServerGenerationProviderFromEnv(): ServerGenerationProvider | null {
   const provider = (process.env.CLAUDE_MEM_SERVER_PROVIDER ?? '').trim().toLowerCase();
   if (!provider) return null;
   try {
@@ -263,6 +264,14 @@ function buildServerGenerationProviderFromEnv(): ServerGenerationProvider | null
       const baseUrl = process.env.CLAUDE_MEM_OPENROUTER_BASE_URL ?? process.env.OPENROUTER_BASE_URL;
       if (baseUrl) opts.baseUrl = baseUrl;
       return new OpenRouterObservationProvider(opts);
+    }
+    if (provider === 'subscription') {
+      const token = process.env.CLAUDE_MEM_SERVER_OAUTH_TOKEN
+        ?? process.env.CLAUDE_CODE_OAUTH_TOKEN ?? '';
+      if (!token) return null;
+      const opts: { oauthToken: string; model?: string } = { oauthToken: token };
+      if (process.env.CLAUDE_MEM_SERVER_MODEL) opts.model = process.env.CLAUDE_MEM_SERVER_MODEL;
+      return new ClaudeSubscriptionObservationProvider(opts);
     }
   } catch {
     return null;
