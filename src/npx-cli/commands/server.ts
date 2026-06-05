@@ -21,7 +21,7 @@ const UNSUPPORTED_SERVER_COMMANDS = new Set([
 ]);
 
 function printServerUsage(): void {
-  console.error(`Usage: ${pc.bold('npx claude-mem server <command>')}`);
+  console.error(`Usage: ${pc.bold('npx @bjlee2024/claude-mem server <command>')}`);
   console.error('Commands: start, stop, restart, status, logs, doctor, migrate, export, import, api-key create|list|revoke, enroll, keys rotate, worker start, jobs status|failed|retry|cancel');
 }
 
@@ -92,7 +92,7 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
       return;
     }
     console.error(pc.red(`Unknown server api-key subcommand: ${apiKeyCommand ?? '(none)'}`));
-    console.error('Usage: npx claude-mem server api-key create|list|revoke');
+    console.error('Usage: npx @bjlee2024/claude-mem server api-key create|list|revoke');
     process.exit(1);
   }
 
@@ -103,7 +103,7 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
       return;
     }
     console.error(pc.red(`Unknown server worker subcommand: ${workerCommand ?? '(none)'}`));
-    console.error('Usage: npx claude-mem server worker start');
+    console.error('Usage: npx @bjlee2024/claude-mem server worker start');
     process.exit(1);
   }
 
@@ -114,7 +114,7 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
       return;
     }
     console.error(pc.red(`Unknown server keys subcommand: ${keysCommand ?? '(none)'}`));
-    console.error('Usage: npx claude-mem server keys rotate');
+    console.error('Usage: npx @bjlee2024/claude-mem server keys rotate');
     process.exit(1);
   }
 
@@ -195,7 +195,7 @@ async function runServerEnrollCommand(args: string[]): Promise<void> {
       const value = args[i + 1];
       if (!value || value.startsWith('--')) {
         console.error(pc.red(`${arg} requires a value, e.g. ${arg === '--label' ? '--label laptop' : '--url https://my-server:37700'}`));
-        console.error('Usage: npx claude-mem server enroll [--url <url>] [--label <name>]');
+        console.error('Usage: npx @bjlee2024/claude-mem server enroll [--url <url>] [--label <name>]');
         process.exit(1);
       }
       if (arg === '--label') {
@@ -243,7 +243,7 @@ async function runServerEnrollCommand(args: string[]): Promise<void> {
     const teamId = await ensureDefaultTeamId(pool);
     const result = await createEnrollment({ pool, teamId, serverUrl, label });
     console.log('Enroll a device with:');
-    console.log(`  npx claude-mem install --mode client --enroll ${result.token}`);
+    console.log(`  npx @bjlee2024/claude-mem install --mode client --enroll ${result.token}`);
   } finally {
     await pool.end().catch(() => undefined);
   }
@@ -301,7 +301,7 @@ export function runWorkerAliasCommand(argv: string[] = []): void {
 
   if (!subCommand || !runWorkerLifecycleCommand(subCommand)) {
     console.error(pc.red(`Unknown worker command: ${subCommand ?? '(none)'}`));
-    console.error('Usage: npx claude-mem worker start|stop|restart|status');
+    console.error('Usage: npx @bjlee2024/claude-mem worker start|stop|restart|status');
     process.exit(1);
   }
 }

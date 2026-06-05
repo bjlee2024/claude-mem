@@ -11,7 +11,7 @@ import { DATA_DIR } from '../../shared/paths.js';
 import { Spool } from '../../services/hooks/spool.js';
 
 function printClientUsage(): void {
-  console.error(`Usage: ${pc.bold('npx claude-mem client <command>')}`);
+  console.error(`Usage: ${pc.bold('npx @bjlee2024/claude-mem client <command>')}`);
   console.error('Commands: status');
 }
 

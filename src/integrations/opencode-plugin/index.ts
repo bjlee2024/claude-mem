@@ -287,7 +287,7 @@ export const ClaudeMemPlugin = async (ctx: OpenCodePluginContext) => {
           );
 
           if (!text) {
-            return "claude-mem worker is not running. Start it with: npx claude-mem start";
+            return "claude-mem worker is not running. Start it with: npx @bjlee2024/claude-mem start";
           }
 
           return parseSearchResponse(text, query);

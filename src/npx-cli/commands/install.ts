@@ -209,7 +209,7 @@ function makeIDETask(ideId: string, summary: InstallSummary): TaskDescriptor | n
           if (mcpResult === 0) {
             return `Cursor: hooks + MCP installed ${pc.green('OK')}`;
           }
-          return `Cursor: hooks installed; MCP setup failed — run \`npx claude-mem cursor mcp\` ${pc.yellow('!')}`;
+          return `Cursor: hooks installed; MCP setup failed — run \`npx @bjlee2024/claude-mem cursor mcp\` ${pc.yellow('!')}`;
         },
       };
     }
@@ -830,7 +830,7 @@ async function maybeBootstrapServerBetaApiKey(): Promise<void> {
   if (!process.env.CLAUDE_MEM_SERVER_DATABASE_URL) {
     log.warn(
       'Skipping local hook API key bootstrap: CLAUDE_MEM_SERVER_DATABASE_URL is not set. '
-        + 'Run `npx claude-mem server keys rotate` after configuring Postgres to provision a key.',
+        + 'Run `npx @bjlee2024/claude-mem server keys rotate` after configuring Postgres to provision a key.',
     );
     return;
   }
@@ -850,7 +850,7 @@ async function maybeBootstrapServerBetaApiKey(): Promise<void> {
   } catch (error: unknown) {
     log.warn(
       `Failed to bootstrap server-beta API key: ${error instanceof Error ? error.message : String(error)}. `
-        + 'Hooks will fall back to the worker until you run `npx claude-mem server keys rotate`.',
+        + 'Hooks will fall back to the worker until you run `npx @bjlee2024/claude-mem server keys rotate`.',
     );
   }
 }
@@ -1381,8 +1381,8 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
     await setupServerRuntimeNonInteractive(options);
     const enrollBase = (options.serverUrl ?? '').trim() || DEFAULT_SERVER_RUNTIME_BASE_URL;
     log.info(
-      `To enroll a client device, run: ${pc.bold(`npx claude-mem server enroll --url ${enrollBase}`)} `
-        + `then install on the client with ${pc.bold('npx claude-mem install --mode client --enroll <token>')}.`,
+      `To enroll a client device, run: ${pc.bold(`npx @bjlee2024/claude-mem server enroll --url ${enrollBase}`)} `
+        + `then install on the client with ${pc.bold('npx @bjlee2024/claude-mem install --mode client --enroll <token>')}.`,
     );
     const selectedProvider = await promptProvider(options);
     if (selectedProvider === 'claude') {
@@ -1555,7 +1555,7 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
           return `Client mode — hooks will send to ${pc.underline(resolved.serverUrl)} ${pc.green('OK')}`;
         }
         if (selectedRuntime === 'server-beta') {
-          return `Server runtime selected — start it with ${pc.bold('npx claude-mem server start')} ${pc.dim('(or via Docker compose)')}`;
+          return `Server runtime selected — start it with ${pc.bold('npx @bjlee2024/claude-mem server start')} ${pc.dim('(or via Docker compose)')}`;
         }
         if (autoStartSkipped) {
           return isInteractive
@@ -1576,7 +1576,7 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
           case 'warming':
             return `Worker starting on port ${port} — finishing in background ${pc.yellow('⏳')}`;
           case 'dead':
-            return `Worker did not start — try \`npx claude-mem start\` manually ${pc.yellow('!')}`;
+            return `Worker did not start — try \`npx @bjlee2024/claude-mem start\` manually ${pc.yellow('!')}`;
         }
       },
     },
@@ -1685,7 +1685,7 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
   const finalWorkerState = workerStartResult as WorkerStartResult;
   const workerAlive = finalWorkerState !== 'dead' || workerReady;
   const runtimeLabel = selectedRuntime === 'server-beta' ? 'Server beta' : 'Worker';
-  const runtimeStartCommand = selectedRuntime === 'server-beta' ? 'npx claude-mem server start' : 'npx claude-mem start';
+  const runtimeStartCommand = selectedRuntime === 'server-beta' ? 'npx @bjlee2024/claude-mem server start' : 'npx @bjlee2024/claude-mem start';
   const workerHeadline = autoStartSkipped
     ? `${pc.yellow('!')} ${runtimeLabel} autostart skipped — start it manually with ${pc.bold(runtimeStartCommand)}`
     : workerReady || finalWorkerState === 'ready'
@@ -1724,7 +1724,7 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
         `${pc.dim('Note: close all Claude Code sessions before uninstalling, or ~/.claude-mem will be recreated by active hooks.')}`,
       ]
     : [
-        `${pc.yellow('!')} Worker not yet ready on port ${pc.cyan(String(workerPort))} -- still starting up; check ${pc.bold('claude-mem status')} later, or start manually: ${pc.bold('npx claude-mem start')}`,
+        `${pc.yellow('!')} Worker not yet ready on port ${pc.cyan(String(workerPort))} -- still starting up; check ${pc.bold('claude-mem status')} later, or start manually: ${pc.bold('npx @bjlee2024/claude-mem start')}`,
         ``,
         `${pc.bold('First success:')} keep ${pc.underline(`http://localhost:${workerPort}`)} open in a browser, then open Claude Code in any project. Observations stream in as Claude reads, edits, and runs commands.`,
         ``,

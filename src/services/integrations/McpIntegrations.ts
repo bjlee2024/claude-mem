@@ -113,7 +113,7 @@ function writeMcpConfigAndContext(
   }
   summaryLines.push('');
   summaryLines.push('Next steps:');
-  summaryLines.push('  1. Start claude-mem worker: npx claude-mem start');
+  summaryLines.push('  1. Start claude-mem worker: npx @bjlee2024/claude-mem start');
   summaryLines.push(`  2. Restart ${config.ideLabel} to pick up the MCP server`);
   summaryLines.push('');
   console.log(summaryLines.join('\n'));
@@ -262,7 +262,7 @@ Note: This is an MCP-only integration providing search tools and context.
 Transcript capture is not available for Goose.
 
 Next steps:
-  1. Start claude-mem worker: npx claude-mem start
+  1. Start claude-mem worker: npx @bjlee2024/claude-mem start
   2. Restart Goose to pick up the MCP server
 `);
 }

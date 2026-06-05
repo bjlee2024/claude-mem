@@ -77,7 +77,7 @@ function resolvePluginMarketplaceRoot(preferredRoot?: string): string {
     if (resolved && missingMarketplaceFiles(resolved).length === 0) return resolved;
   }
 
-  throw new Error('Could not locate a Codex marketplace root with .agents/plugins/marketplace.json and plugin/.codex-plugin/plugin.json. Run npx claude-mem@latest install from the package or repo root.');
+  throw new Error('Could not locate a Codex marketplace root with .agents/plugins/marketplace.json and plugin/.codex-plugin/plugin.json. Run npx @bjlee2024/claude-mem@latest install from the package or repo root.');
 }
 
 /**
@@ -259,7 +259,7 @@ function assertCodexMarketplaceSupported(): void {
 
   const minimumVersion = parseSemver(MIN_CODEX_MARKETPLACE_VERSION);
   if (minimumVersion && compareSemver(version, minimumVersion) < 0) {
-    throw new Error(`Codex CLI ${version.join('.')} is too old for plugin marketplace support. Update Codex CLI to ${MIN_CODEX_MARKETPLACE_VERSION} or newer, then run: npx claude-mem@latest install`);
+    throw new Error(`Codex CLI ${version.join('.')} is too old for plugin marketplace support. Update Codex CLI to ${MIN_CODEX_MARKETPLACE_VERSION} or newer, then run: npx @bjlee2024/claude-mem@latest install`);
   }
 }
 
@@ -367,7 +367,7 @@ export async function installCodexCli(marketplaceRootOverride?: string): Promise
 
   if (!commandExists('codex')) {
     console.error('Codex CLI was not found on PATH.');
-    console.error('Install Codex, then run: npx claude-mem@latest install');
+    console.error('Install Codex, then run: npx @bjlee2024/claude-mem@latest install');
     return 1;
   }
 
@@ -401,7 +401,7 @@ Next steps:
   2. Restart any running Codex sessions so native hooks are loaded
 
 For a fresh setup, the supported entry point is:
-  npx claude-mem@latest install
+  npx @bjlee2024/claude-mem@latest install
 `);
     return 0;
   } catch (error) {

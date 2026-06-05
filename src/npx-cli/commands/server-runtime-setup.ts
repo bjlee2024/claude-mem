@@ -96,7 +96,7 @@ export function planServerRuntimeInstall(inputs: ServerRuntimeInstallInputs): Se
   if (!inputs.hasDatabaseUrl) {
     notes.push(
       'CLAUDE_MEM_SERVER_DATABASE_URL is not set; skipping API key generation. '
-        + 'Run `npx claude-mem server keys rotate` after Postgres is reachable to provision a hook key.',
+        + 'Run `npx @bjlee2024/claude-mem server keys rotate` after Postgres is reachable to provision a hook key.',
     );
   }
 

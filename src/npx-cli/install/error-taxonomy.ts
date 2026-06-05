@@ -1,6 +1,6 @@
 /**
  * Installer error taxonomy — the single source of truth for classifying every
- * failure the universal installer (`npx claude-mem install`) can hit, and the
+ * failure the universal installer (`npx @bjlee2024/claude-mem install`) can hit, and the
  * remediation we surface for each.
  *
  * Design constraints (see plans/04-installer-transparency.md):
@@ -51,13 +51,13 @@ function causeMessage(cause: unknown): string {
 
 const BUN_REMEDIATION = (ctx: RemediationContext): string =>
   ctx.platform === 'win32'
-    ? 'Install Bun manually then re-run `npx claude-mem install`. Windows: `winget install Oven-sh.Bun` (or `powershell -c "irm bun.sh/install.ps1 | iex"`).'
-    : 'Install Bun manually then re-run `npx claude-mem install`. macOS/Linux: `curl -fsSL https://bun.sh/install | bash` (or `brew install oven-sh/bun/bun`).';
+    ? 'Install Bun manually then re-run `npx @bjlee2024/claude-mem install`. Windows: `winget install Oven-sh.Bun` (or `powershell -c "irm bun.sh/install.ps1 | iex"`).'
+    : 'Install Bun manually then re-run `npx @bjlee2024/claude-mem install`. macOS/Linux: `curl -fsSL https://bun.sh/install | bash` (or `brew install oven-sh/bun/bun`).';
 
 const UV_REMEDIATION = (ctx: RemediationContext): string =>
   ctx.platform === 'win32'
-    ? 'Install uv manually then re-run `npx claude-mem install`. Windows: `winget install astral-sh.uv` (or `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`).'
-    : 'Install uv manually then re-run `npx claude-mem install`. macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`).';
+    ? 'Install uv manually then re-run `npx @bjlee2024/claude-mem install`. Windows: `winget install astral-sh.uv` (or `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`).'
+    : 'Install uv manually then re-run `npx @bjlee2024/claude-mem install`. macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`).';
 
 /**
  * The canonical category list. Ordered most-specific-first; `classifyError`
@@ -104,7 +104,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
     severity: ErrorSeverity.SILENT_RETRY,
     match: (cause) => /error: failed to resolve/.test(causeMessage(cause)),
     remediation: () =>
-      'bun install failed to resolve packages — check network connectivity and re-run `npx claude-mem install`. Cached packages in ~/.bun/install/cache will be reused.',
+      'bun install failed to resolve packages — check network connectivity and re-run `npx @bjlee2024/claude-mem install`. Cached packages in ~/.bun/install/cache will be reused.',
   },
   {
     id: 'marketplace-dir-not-writable',
@@ -120,7 +120,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
       ctx.component === 'plugin-json' &&
       /Unexpected token|JSON|parse/i.test(causeMessage(cause)),
     remediation: () =>
-      'Existing plugin.json is corrupt. Run `rm -rf ~/.claude/plugins/marketplaces/bjlee2024` and re-run `npx claude-mem install`.',
+      'Existing plugin.json is corrupt. Run `rm -rf ~/.claude/plugins/marketplaces/bjlee2024` and re-run `npx @bjlee2024/claude-mem install`.',
   },
   {
     id: 'all-ides-failed',
@@ -134,7 +134,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
     severity: ErrorSeverity.FAIL_LOUD_PER_IDE,
     match: (_cause, ctx) => ctx.phase === 'ide-install',
     remediation: () =>
-      'Re-run `npx claude-mem install --ide=<name>` to retry just this IDE. The captured stderr is shown above.',
+      'Re-run `npx @bjlee2024/claude-mem install --ide=<name>` to retry just this IDE. The captured stderr is shown above.',
   },
   {
     id: 'path-update-failed',
@@ -155,7 +155,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
     severity: ErrorSeverity.WARN_CONTINUE,
     match: (_cause, ctx) => ctx.component.endsWith('-version-probe'),
     remediation: () =>
-      'Could not verify the tool version after install — the installation is likely OK. Re-run `npx claude-mem install` if features misbehave.',
+      'Could not verify the tool version after install — the installation is likely OK. Re-run `npx @bjlee2024/claude-mem install` if features misbehave.',
   },
   {
     id: 'child-process-timeout',

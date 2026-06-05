@@ -1,5 +1,5 @@
 /**
- * `npx claude-mem doctor` — a minimal diagnostic that probes every layer an
+ * `npx @bjlee2024/claude-mem doctor` — a minimal diagnostic that probes every layer an
  * operator would otherwise check by hand (#2548). Read-only: it never mutates
  * state. Exits 0 when all REQUIRED checks pass, 1 otherwise, so it is CI/script
  * friendly.
@@ -65,7 +65,7 @@ export async function runDoctorCommand(): Promise<void> {
   checks.push({
     name: 'Plugin installed',
     status: installed ? 'ok' : 'fail',
-    detail: installed ? marketplaceDirectory() : 'run `npx claude-mem install`',
+    detail: installed ? marketplaceDirectory() : 'run `npx @bjlee2024/claude-mem install`',
     required: true,
   });
 
@@ -75,14 +75,14 @@ export async function runDoctorCommand(): Promise<void> {
   checks.push({
     name: 'Marketplace deps',
     status: installed ? (depsPresent ? 'ok' : 'fail') : 'warn',
-    detail: depsPresent ? 'node_modules present' : 'missing — run `npx claude-mem repair`',
+    detail: depsPresent ? 'node_modules present' : 'missing — run `npx @bjlee2024/claude-mem repair`',
     required: installed,
   });
 
   // 5. Worker health.
   const workerPort = SettingsDefaultsManager.get('CLAUDE_MEM_WORKER_PORT');
   let workerStatus: CheckStatus = 'fail';
-  let workerDetail = `no response on port ${workerPort} — start with \`npx claude-mem start\``;
+  let workerDetail = `no response on port ${workerPort} — start with \`npx @bjlee2024/claude-mem start\``;
   try {
     const res = await fetch(`http://127.0.0.1:${workerPort}/api/health`, {
       signal: AbortSignal.timeout(3000),

@@ -10,7 +10,7 @@
  *
  * `--ignore-scripts` is the default: per the v12.6.1 -> v12.6.2 incident, a
  * transitive dep's network postinstall (tree-sitter-swift's nested
- * tree-sitter-cli) could hang `npx claude-mem install`. npm does NOT honor
+ * tree-sitter-cli) could hang `npx @bjlee2024/claude-mem install`. npm does NOT honor
  * `trustedDependencies` (Bun-only), so we suppress scripts at the CLI level.
  */
 
