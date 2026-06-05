@@ -11,8 +11,9 @@ import { shouldTrackProject } from '../../shared/should-track-project.js';
 import { loadFromFileOnce } from '../../shared/hook-settings.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
 import { isInternalProtocolPayload } from '../../utils/tag-stripping.js';
-import { resolveRuntimeContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
+import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
+import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 
 interface SessionInitResponse {
   sessionDbId: number;
@@ -55,6 +56,25 @@ export const sessionInitHandler: EventHandler = {
     const platformSource = normalizePlatformSource(input.platform);
 
     const runtime = resolveRuntimeContext();
+    if (runtime.runtime === 'client') {
+      const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
+      try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      try {
+        const projectId = fixedProjectId ?? await resolver.resolve(cwd);
+        await client.startSession({
+          projectId,
+          externalSessionId: sessionId,
+          contentSessionId: sessionId,
+          agentId: input.agentId ?? null,
+          agentType: input.agentType ?? null,
+          platformSource,
+          metadata: { project, prompt },
+        });
+      } catch (error) {
+        logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
+      }
+      return { continue: true, suppressOutput: true };
+    }
     if (runtime.runtime === 'server-beta') {
       try {
         await runtime.client.startSession({

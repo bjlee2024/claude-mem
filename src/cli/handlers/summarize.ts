@@ -10,8 +10,9 @@ import { stripMemoryTagsFromPrompt } from '../../utils/tag-stripping.js';
 import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
-import { resolveRuntimeContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
+import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
+import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 
 export const summarizeHandler: EventHandler = {
   async execute(input: NormalizedHookInput): Promise<HookResult> {
@@ -76,6 +77,25 @@ export const summarizeHandler: EventHandler = {
     const platformSource = normalizePlatformSource(input.platform);
 
     const runtime = resolveRuntimeContext();
+    if (runtime.runtime === 'client') {
+      const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
+      try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      try {
+        const cwd = input.cwd ?? process.cwd();
+        const projectId = fixedProjectId ?? await resolver.resolve(cwd);
+        const startResult = await client.startSession({
+          projectId,
+          externalSessionId: sessionId,
+          contentSessionId: sessionId,
+          platformSource,
+        });
+        const serverSessionId = startResult.session.id;
+        await client.endSession({ sessionId: serverSessionId });
+      } catch (error) {
+        logger.error('HOOK', 'client endSession failed (best-effort)', { error: String(error) });
+      }
+      return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
+    }
     if (runtime.runtime === 'server-beta') {
       try {
         // Resolve the server_session_id idempotently. /v1/sessions/start is
