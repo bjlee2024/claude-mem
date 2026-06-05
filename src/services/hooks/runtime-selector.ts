@@ -14,7 +14,7 @@ import { loadFromFileOnce } from '../../shared/hook-settings.js';
 import { logger } from '../../utils/logger.js';
 import { ServerBetaClient, type ServerBetaClientConfig } from './server-beta-client.js';
 
-export type SelectedRuntime = 'worker' | 'server-beta';
+export type SelectedRuntime = 'worker' | 'server-beta' | 'client';
 
 export interface ServerBetaRuntimeContext {
   runtime: 'server-beta';
@@ -23,17 +23,28 @@ export interface ServerBetaRuntimeContext {
   serverBaseUrl: string;
 }
 
+export interface ClientRuntimeContext {
+  runtime: 'client';
+  client: ServerBetaClient;
+  projectId: string | null; // null => resolve per-repo
+  serverBaseUrl: string;
+}
+
 export interface WorkerRuntimeContext {
   runtime: 'worker';
 }
 
-export type RuntimeContext = ServerBetaRuntimeContext | WorkerRuntimeContext;
+export type RuntimeContext = ServerBetaRuntimeContext | ClientRuntimeContext | WorkerRuntimeContext;
+
+export function normalizeRuntimeValue(raw: string | undefined): SelectedRuntime {
+  const v = (raw ?? 'worker').trim().toLowerCase();
+  if (v === 'server-beta') return 'server-beta';
+  if (v === 'client') return 'client';
+  return 'worker';
+}
 
 export function selectRuntime(): SelectedRuntime {
-  const settings = loadFromFileOnce();
-  const raw = (settings.CLAUDE_MEM_RUNTIME ?? 'worker').trim().toLowerCase();
-  if (raw === 'server-beta') return 'server-beta';
-  return 'worker';
+  return normalizeRuntimeValue(loadFromFileOnce().CLAUDE_MEM_RUNTIME);
 }
 
 export function buildServerBetaContext(): ServerBetaRuntimeContext | null {
@@ -67,15 +78,36 @@ export function buildServerBetaContext(): ServerBetaRuntimeContext | null {
   };
 }
 
+export function buildClientRuntimeContext(): ClientRuntimeContext | null {
+  const settings = loadFromFileOnce();
+  const serverBaseUrl = (settings.CLAUDE_MEM_SERVER_BETA_URL ?? '').trim();
+  const apiKey = (settings.CLAUDE_MEM_SERVER_BETA_API_KEY ?? '').trim();
+  if (!serverBaseUrl) {
+    logger.warn('HOOK', '[client-fallback] reason=missing_base_url');
+    return null;
+  }
+  if (!apiKey) {
+    logger.warn('HOOK', '[client-fallback] reason=missing_api_key');
+    return null;
+  }
+  const projectId = (settings.CLAUDE_MEM_SERVER_BETA_PROJECT_ID ?? '').trim() || null;
+  return {
+    runtime: 'client',
+    client: new ServerBetaClient({ serverBaseUrl, apiKey }),
+    projectId,
+    serverBaseUrl,
+  };
+}
+
 export function resolveRuntimeContext(): RuntimeContext {
-  if (selectRuntime() !== 'server-beta') {
-    return { runtime: 'worker' };
+  const selected = selectRuntime();
+  if (selected === 'server-beta') {
+    return buildServerBetaContext() ?? { runtime: 'worker' };
   }
-  const ctx = buildServerBetaContext();
-  if (!ctx) {
-    return { runtime: 'worker' };
+  if (selected === 'client') {
+    return buildClientRuntimeContext() ?? { runtime: 'worker' };
   }
-  return ctx;
+  return { runtime: 'worker' };
 }
 
 export function logServerBetaFallback(reason: string, details?: Record<string, unknown>): void {
