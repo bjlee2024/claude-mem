@@ -28,6 +28,9 @@ ${pc.bold('Install Commands')} (no Bun required):
   ${pc.cyan('npx claude-mem install --no-auto-start')}   Skip worker auto-start at the end
   ${pc.cyan('npx claude-mem install --runtime worker|server')}   Select runtime non-interactively (server brings up Docker pg+redis, generates an API key, injects the IDE MCP config)
   ${pc.cyan('npx claude-mem install --runtime server --server-url <url>')}   Point the server runtime at a specific base URL
+  ${pc.cyan('npx claude-mem install --mode server')}   Run the backend + provision an enrollment key (takes precedence over --runtime)
+  ${pc.cyan('npx claude-mem install --mode client --enroll <token>')}   Thin client install pointing at a remote server (no local worker/SQLite/Chroma)
+  ${pc.cyan('npx claude-mem install --mode client --server-url <url> --token <key>')}   Client install with explicit creds
   ${pc.cyan('npx claude-mem repair')}                Repair runtime (re-runs Bun/uv setup and bun install in plugin cache)
   ${pc.cyan('npx claude-mem update')}               Update to latest version
   ${pc.cyan('npx claude-mem uninstall')}            Remove plugin and configs
@@ -86,6 +89,21 @@ function parseInstallOptions(argv: string[]): InstallOptions {
     console.error(`Unknown --runtime: ${runtime}. Allowed: worker, server`);
     process.exit(1);
   }
+  // Task 16 — client/server split flags. `--mode` takes precedence over
+  // `--runtime`; unspecified `--mode` preserves the legacy runtime selection.
+  const mode = readFlag(argv, '--mode');
+  if (mode !== undefined && mode !== 'server' && mode !== 'client') {
+    console.error(`Unknown --mode: ${mode}. Allowed: server, client`);
+    process.exit(1);
+  }
+  // `--with-local-client` / `--no-local-client` toggle hook install on the
+  // server box (server mode only; default true).
+  let withLocalClient: boolean | undefined;
+  if (argv.includes('--no-local-client') || argv.includes('--with-local-client=false')) {
+    withLocalClient = false;
+  } else if (argv.includes('--with-local-client')) {
+    withLocalClient = true;
+  }
   return {
     ide: readFlag(argv, '--ide'),
     provider: provider as InstallOptions['provider'],
@@ -93,6 +111,10 @@ function parseInstallOptions(argv: string[]): InstallOptions {
     noAutoStart: argv.includes('--no-auto-start'),
     runtime: runtime as InstallOptions['runtime'],
     serverUrl: readFlag(argv, '--server-url'),
+    mode: mode as InstallOptions['mode'],
+    enroll: readFlag(argv, '--enroll'),
+    token: readFlag(argv, '--token'),
+    withLocalClient,
   };
 }
 

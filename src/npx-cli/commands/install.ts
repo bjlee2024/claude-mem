@@ -788,6 +788,41 @@ async function setupServerRuntimeNonInteractive(options: InstallOptions): Promis
   }
 }
 
+// Task 16 — client install. Write client-mode settings so the hooks target the
+// remote server, then best-effort preflight the server's /v1/info (WARN, never
+// fail). Reuses persistServerBetaSettings (the established 0600 writer for the
+// SERVER_BETA_* keys) and mergeSettings for CLAUDE_MEM_RUNTIME, rather than
+// hand-rolling a parallel settings writer.
+async function setupClientRuntime(serverUrl: string, apiKey: string): Promise<void> {
+  mergeSettings({ CLAUDE_MEM_RUNTIME: 'client' });
+  const { persistServerBetaSettings } = await import('../../services/hooks/server-beta-bootstrap.js');
+  // projectId is empty for client mode: the enrollment key is team-scoped and
+  // resolves per-repo projects on the server. persistServerBetaSettings writes
+  // CLAUDE_MEM_SERVER_BETA_API_KEY + CLAUDE_MEM_SERVER_BETA_URL and chmods 0600.
+  persistServerBetaSettings(USER_SETTINGS_PATH, {
+    apiKey,
+    projectId: '',
+    serverBaseUrl: serverUrl,
+  });
+  log.info(`Saved client settings (server=${serverUrl}). Settings written with mode 0600.`);
+
+  // Best-effort reachability preflight. A WARN must NOT fail the install.
+  const infoUrl = `${serverUrl.replace(/\/+$/, '')}/v1/info`;
+  try {
+    const res = await fetch(infoUrl, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      log.success(`Server reachable at ${infoUrl}`);
+    } else {
+      log.warn(`Server responded ${res.status} at ${infoUrl}. Install completed; verify the server is healthy before using.`);
+    }
+  } catch (error: unknown) {
+    log.warn(
+      `Could not reach ${infoUrl} (${error instanceof Error ? error.message : String(error)}). `
+        + 'Install completed anyway — hooks will retry against the server at runtime.',
+    );
+  }
+}
+
 async function maybeBootstrapServerBetaApiKey(): Promise<void> {
   // Only attempt if Postgres is configured. Without DATABASE_URL we cannot
   // reach the api_keys table — the operator must configure the server first
@@ -1204,6 +1239,17 @@ export interface InstallOptions {
   runtime?: 'worker' | 'server' | 'server-beta';
   // Base URL the server runtime (and the injected IDE MCP config) targets.
   serverUrl?: string;
+  // Task 16 — client/server split. `--mode server|client` takes precedence over
+  // `--runtime`. `client` = thin install pointing at a remote server (no local
+  // worker/SQLite/Chroma, no provider-key prompt); `server` = run the backend +
+  // provision an enrollment key. Unspecified mode preserves legacy behavior.
+  mode?: 'server' | 'client';
+  // Client-mode credentials: either a one-line `--enroll` token, or the pair
+  // `--server-url` + `--token`.
+  enroll?: string;
+  token?: string;
+  // Server-mode: install the local client/hooks alongside the backend (default true).
+  withLocalClient?: boolean;
 }
 
 export async function runInstallCommand(options: InstallOptions = {}): Promise<void> {
@@ -1279,8 +1325,27 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
     }
   }
 
+  // Task 16 — resolve --mode (takes precedence over --runtime). Unspecified
+  // --mode yields the legacy runtime path below unchanged. Resolved before IDE
+  // selection so `--mode server` without a local client can skip the IDE/hook
+  // install entirely.
+  const resolved = resolveInstallMode({
+    mode: options.mode,
+    runtime: options.runtime === 'server' ? 'server-beta' : options.runtime,
+    enroll: options.enroll,
+    serverUrl: options.serverUrl,
+    token: options.token,
+    withLocalClient: options.withLocalClient,
+  });
+  const isClientMode = resolved.runtime === 'client';
+  // `--mode server --with-local-client=false` provisions the backend only; no
+  // IDE hooks are installed on the server box.
+  const skipIdeHooks = options.mode === 'server' && !resolved.withLocalClient;
+
   let selectedIDEs: string[];
-  if (options.ide) {
+  if (skipIdeHooks) {
+    selectedIDEs = [];
+  } else if (options.ide) {
     selectedIDEs = [options.ide];
     const allIDEs = detectInstalledIDEs();
     const match = allIDEs.find((i) => i.id === options.ide);
@@ -1299,10 +1364,36 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
     selectedIDEs = ['claude-code'];
   }
 
-  const selectedRuntime = await promptRuntime(options);
-  const selectedProvider = await promptProvider(options);
-  if (selectedProvider === 'claude') {
-    await promptClaudeModel(options);
+  let selectedRuntime: RuntimeId | 'client';
+  if (isClientMode) {
+    // Client install: write client-mode settings so hooks target the remote
+    // server. SKIP runtime prompt, provider-key prompt, and (later) the worker
+    // autostart + SQLite/Chroma setup.
+    selectedRuntime = 'client';
+    await setupClientRuntime(resolved.serverUrl, resolved.apiKey);
+  } else if (options.mode === 'server') {
+    // Task 16 — `--mode server`: reuse the existing `--runtime server`
+    // provisioning flow (Docker stack + schema + key gen) deterministically,
+    // never prompting. Then print an enrollment hint so the operator can mint a
+    // client token. Provider prompt still runs (the server needs a compression
+    // provider just like the worker path).
+    selectedRuntime = 'server-beta';
+    await setupServerRuntimeNonInteractive(options);
+    const enrollBase = (options.serverUrl ?? '').trim() || DEFAULT_SERVER_RUNTIME_BASE_URL;
+    log.info(
+      `To enroll a client device, run: ${pc.bold(`npx claude-mem server enroll --url ${enrollBase}`)} `
+        + `then install on the client with ${pc.bold('npx claude-mem install --mode client --enroll <token>')}.`,
+    );
+    const selectedProvider = await promptProvider(options);
+    if (selectedProvider === 'claude') {
+      await promptClaudeModel(options);
+    }
+  } else {
+    selectedRuntime = await promptRuntime(options);
+    const selectedProvider = await promptProvider(options);
+    if (selectedProvider === 'claude') {
+      await promptClaudeModel(options);
+    }
   }
 
   let workerStartResult: WorkerStartResult = 'dead';
@@ -1447,12 +1538,22 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
   // `claude-mem server start`), NOT the worker-service spawner. Skip the
   // worker-only autostart entirely so the server runtime never invokes the
   // worker path (#2543).
-  const autoStartSkipped = !isInteractive || options.noAutoStart || selectedRuntime === 'server-beta';
+  // Task 16 — client mode never starts a local worker (it points at a remote
+  // server). Treat it like server-beta for autostart-skip purposes.
+  const autoStartSkipped = !isInteractive || options.noAutoStart
+    || selectedRuntime === 'server-beta' || selectedRuntime === 'client';
 
   await runTasks([
     {
-      title: selectedRuntime === 'server-beta' ? 'Starting server beta daemon' : 'Starting worker daemon',
+      title: selectedRuntime === 'server-beta'
+        ? 'Starting server beta daemon'
+        : selectedRuntime === 'client'
+          ? 'Configuring remote client'
+          : 'Starting worker daemon',
       task: async (message) => {
+        if (selectedRuntime === 'client') {
+          return `Client mode — hooks will send to ${pc.underline(resolved.serverUrl)} ${pc.green('OK')}`;
+        }
         if (selectedRuntime === 'server-beta') {
           return `Server runtime selected — start it with ${pc.bold('npx claude-mem server start')} ${pc.dim('(or via Docker compose)')}`;
         }
@@ -1548,6 +1649,37 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
     } catch {
       healthSpinner?.stop(`Worker not yet responding on port ${workerPort} (still starting)`);
     }
+  }
+
+  // Task 16 — client mode has its own short next-steps (no local worker URL to
+  // open). Return early so the worker-centric messaging below never runs.
+  if (selectedRuntime === 'client') {
+    const clientSteps = [
+      `${pc.green('✓')} Client installed — hooks send memory to ${pc.underline(resolved.serverUrl)}`,
+      ``,
+      `${pc.bold('First success:')} open Claude Code in any project. Observations are compressed and stored on the remote server; memory injection starts on your second session in a project.`,
+      ``,
+      `No local worker, SQLite, or Chroma runs on this machine — everything lives on the server.`,
+      `${pc.dim('Reachability was preflighted during install; if the server was unreachable you saw a warning above.')}`,
+    ];
+    if (isInteractive) {
+      p.note(clientSteps.join('\n'), 'Next Steps');
+      if (failedIDEs.length > 0) {
+        p.outro(pc.yellow('claude-mem client installed with some IDE setup failures.'));
+      } else {
+        p.outro(pc.green('claude-mem client installed successfully!'));
+      }
+    } else {
+      console.log('\n  Next Steps');
+      clientSteps.forEach((l) => console.log(`  ${l}`));
+      if (failedIDEs.length > 0) {
+        console.log('\nclaude-mem client installed with some IDE setup failures.');
+        process.exitCode = 1;
+      } else {
+        console.log('\nclaude-mem client installed successfully!');
+      }
+    }
+    return;
   }
 
   const finalWorkerState = workerStartResult as WorkerStartResult;
