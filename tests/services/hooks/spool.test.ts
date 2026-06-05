@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Spool } from '../../../src/services/hooks/spool.js';
+import { Spool, type SpoolRecord } from '../../../src/services/hooks/spool.js';
 
 describe('Spool', () => {
   let dir: string;
@@ -41,5 +41,49 @@ describe('Spool', () => {
     await s.flush(async () => ({ ok: true }));
     expect(existsSync(join(dir, 'pending.ndjson'))).toBe(false);
     expect(s.depth()).toBe(0);
+  });
+
+  it('crash recovery: orphaned .flushing.<dead-pid> is reclaimed and record is sent', async () => {
+    const spoolPath = join(dir, 'pending.ndjson');
+    const orphanPath = `${spoolPath}.flushing.999999`;
+    const orphanRec: SpoolRecord = {
+      id: 'orphan-1', kind: 'event', endpoint: '/v1/events',
+      body: { x: 'orphan-1' }, projectName: 'p', enqueuedAtEpoch: 1,
+    };
+    // Write the orphan file (crash after rename, no pending.ndjson)
+    writeFileSync(orphanPath, JSON.stringify(orphanRec) + '\n', { mode: 0o600 });
+
+    const s = newSpool();
+    const sent: string[] = [];
+    await s.flush(async (r) => { sent.push(r.id); return { ok: true }; });
+
+    expect(sent).toContain('orphan-1');
+    expect(s.depth()).toBe(0);
+    expect(existsSync(orphanPath)).toBe(false);
+  });
+
+  it('live-pid not stolen: .flushing.<current-pid> is left untouched', async () => {
+    const spoolPath = join(dir, 'pending.ndjson');
+    const livePath = `${spoolPath}.flushing.${process.pid}`;
+    const liveRec: SpoolRecord = {
+      id: 'live-1', kind: 'event', endpoint: '/v1/events',
+      body: { x: 'live-1' }, projectName: 'p', enqueuedAtEpoch: 1,
+    };
+    writeFileSync(livePath, JSON.stringify(liveRec) + '\n', { mode: 0o600 });
+
+    const s = newSpool();
+    const sent: string[] = [];
+    await s.flush(async (r) => { sent.push(r.id); return { ok: true }; });
+
+    // The live-pid file must survive and its record must NOT have been sent
+    expect(existsSync(livePath)).toBe(true);
+    expect(sent).not.toContain('live-1');
+  });
+
+  it('thrown-error requeues the record', async () => {
+    const s = newSpool();
+    s.append(rec('e1'));
+    await s.flush(async () => { throw new Error('net'); });
+    expect(s.depth()).toBe(1);
   });
 });

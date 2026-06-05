@@ -6,8 +6,9 @@
 // the file atomically (rename) so two flushers never double-send.
 import {
   existsSync, readFileSync, writeFileSync, appendFileSync, renameSync, unlinkSync, mkdirSync,
+  readdirSync,
 } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, basename } from 'node:path';
 
 export interface SpoolRecord {
   id: string;
@@ -45,8 +46,40 @@ export class Spool {
   peekIds(): string[] { return this.read(this.path).map(r => r.id); }
 
   async flush(send: SpoolSender, budget = 200): Promise<void> {
+    // Reclaim orphaned .flushing.<pid> files left behind by crashed processes.
+    // We only steal a file if its owner PID is provably dead — process.kill(pid, 0)
+    // throws ESRCH when the process is gone (safe to reclaim) and either succeeds
+    // or throws EPERM when it is alive (skip; a concurrent flush owns it).
+    // This runs before the early-return so even an empty spool heals orphans.
+    const myFlushFile = `${this.path}.flushing.${process.pid}`;
+    try {
+      const dir = dirname(this.path);
+      const prefix = `${basename(this.path)}.flushing.`;
+      for (const name of readdirSync(dir)) {
+        if (!name.startsWith(prefix)) continue;
+        const orphanPath = `${dir}/${name}`;
+        if (orphanPath === myFlushFile) continue; // never steal our own slot
+        const pidStr = name.slice(prefix.length);
+        const pid = parseInt(pidStr, 10);
+        let isOrphan = isNaN(pid); // unparseable PID → treat as orphan
+        if (!isOrphan) {
+          try { process.kill(pid, 0); /* alive (or EPERM) → skip */ }
+          catch (e: unknown) { if ((e as NodeJS.ErrnoException).code === 'ESRCH') isOrphan = true; }
+        }
+        if (!isOrphan) continue;
+        // Merge orphan records to the front of pending.ndjson (FIFO: older records first)
+        const orphanRecords = this.read(orphanPath);
+        const pendingRecords = this.read(this.path);
+        const merged = [...orphanRecords, ...pendingRecords];
+        if (merged.length > 0) {
+          writeFileSync(this.path, merged.map(r => JSON.stringify(r)).join('\n') + '\n', { mode: 0o600 });
+        }
+        unlinkSync(orphanPath);
+      }
+    } catch { /* recovery is best-effort; never throw into caller */ }
+
     if (!existsSync(this.path)) return;
-    const taking = `${this.path}.flushing.${process.pid}`;
+    const taking = myFlushFile;
     try { renameSync(this.path, taking); } catch { return; } // someone else took it
     const records = this.read(taking);
     const requeue: SpoolRecord[] = [];
