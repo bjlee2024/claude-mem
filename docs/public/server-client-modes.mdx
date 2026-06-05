@@ -200,6 +200,69 @@ it expires. If you see `auth_invalid` errors in the worker logs, the token has
 expired or is wrong.
 </Note>
 
+## Generation with a local open-source model (Ollama)
+
+The worker can generate against **any OpenAI-compatible endpoint** via the
+`openrouter` provider, including a **local model** served by Ollama, vLLM, or
+LM Studio. A local model means generation is free, private, and works offline —
+your memory never leaves the machine.
+
+This walks through Ollama on the same host as the server stack.
+
+```bash
+# 1. Install Ollama and bind it so the worker container can reach it (0.0.0.0):
+curl -fsSL https://ollama.com/install.sh | sh
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' \
+  | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+
+# 2. Pull a model with strong structured-output (XML) adherence:
+ollama pull qwen2.5:7b-instruct
+```
+
+Let the worker reach the host's Ollama. In `docker-compose.my.yml`, add to the
+`claude-mem-worker` service:
+
+```yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+If the host firewall denies incoming connections (e.g. `ufw`), allow the Docker
+subnet to reach Ollama — this is the most common reason the worker can't connect:
+
+```bash
+sudo ufw allow from 172.16.0.0/12 to any port 11434 proto tcp comment 'docker -> host ollama'
+sudo ufw reload
+```
+
+Point the worker at the local model (in `.env`):
+
+```bash
+CLAUDE_MEM_SERVER_PROVIDER=openrouter
+CLAUDE_MEM_OPENROUTER_BASE_URL=http://host.docker.internal:11434/v1
+CLAUDE_MEM_SERVER_MODEL=qwen2.5:7b-instruct
+OPENROUTER_API_KEY=ollama   # dummy; the provider requires a non-empty value
+```
+
+Then restart and confirm the worker reaches Ollama and produces observations:
+
+```bash
+sudo systemctl restart claude-mem      # or: docker compose up -d
+docker exec <worker> curl -s http://host.docker.internal:11434/api/version
+docker compose -p claude-mem logs -f claude-mem-worker
+```
+
+<Note>
+**Model choice matters.** Generation must emit a specific observation XML format,
+so use a capable instruction-follower. `qwen2.5:7b-instruct` (~5 GB VRAM) works
+well and runs fully on an 8 GB GPU; step up to `qwen2.5:14b` or `32b` for better
+adherence (at the cost of speed / partial CPU offload). Small 7B-and-under models
+from weaker families may emit malformed XML and fail jobs. Switch models by
+changing only `CLAUDE_MEM_SERVER_MODEL`.
+</Note>
+
 ## Notes & limits
 
 - **One trusted network.** These modes assume a single owner on a trusted tailnet. The
