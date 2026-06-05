@@ -182,6 +182,9 @@ export interface ServerBetaContextObservationsResponse {
   context: string;
 }
 
+// Client/server split — response from POST /v1/projects/resolve.
+export interface ServerBetaResolveProjectResponse { id: string }
+
 // Phase 8 — generation job status, scoped by api-key team/project.
 export interface ServerBetaJobStatusResponse {
   generationJob: {
@@ -260,6 +263,14 @@ export class ServerBetaClient {
       '/v1/context',
       this.buildSearchPayload(input),
     );
+  }
+
+  // Client/server split — resolve-or-create a project by repo name.
+  async resolveProject(name: string): Promise<string> {
+    const res = await this.request<ServerBetaResolveProjectResponse>(
+      'POST', '/v1/projects/resolve', { name },
+    );
+    return res.id;
   }
 
   // Phase 8 — MCP `observation_generation_status`. Server returns the same
