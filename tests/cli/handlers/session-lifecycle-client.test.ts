@@ -104,6 +104,9 @@ let endSessionImpl: () => Promise<unknown> = async () => ({});
 let flushCalls: Array<unknown> = [];
 let flushImpl: (sender: unknown) => Promise<void> = async () => {};
 
+let writerRecordEventCalls: Array<unknown> = [];
+let writerRecordEventImpl: (input: unknown) => Promise<void> = async () => {};
+
 const spoolStub = {
   flush: (sender: unknown) => {
     flushCalls.push(sender);
@@ -113,6 +116,13 @@ const spoolStub = {
 
 const resolverStub = {
   resolve: async () => 'proj-id-resolved',
+};
+
+const writerStub = {
+  recordEvent: (input: unknown) => {
+    writerRecordEventCalls.push(input);
+    return writerRecordEventImpl(input);
+  },
 };
 
 const clientStub = {
@@ -141,7 +151,7 @@ mock.module('../../../src/services/hooks/runtime-selector.js', () => ({
     client: clientStub,
     resolver: resolverStub,
     spool: spoolStub,
-    writer: {},
+    writer: writerStub,
     fixedProjectId: null,
   }),
 }));
@@ -169,6 +179,8 @@ beforeEach(() => {
   endSessionImpl = async () => ({});
   flushCalls = [];
   flushImpl = async () => {};
+  writerRecordEventCalls = [];
+  writerRecordEventImpl = async () => {};
   madeSenderClient = null;
   loggerSpies = [
     spyOn(logger, 'info').mockImplementation(() => {}),
@@ -301,7 +313,7 @@ describe('summarizeHandler — client runtime branch', () => {
     };
   }
 
-  it('calls startSession then endSession, flushes spool, returns { continue: true, suppressOutput: true, exitCode: SUCCESS }', async () => {
+  it('records assistant message via writer (durable), calls startSession then endSession, flushes spool, returns success', async () => {
     const { summarizeHandler } = await import('../../../src/cli/handlers/summarize.js');
 
     const result = await summarizeHandler.execute(summarizeInput());
@@ -311,7 +323,13 @@ describe('summarizeHandler — client runtime branch', () => {
     // sender was built from the runtime client
     expect(madeSenderClient).toBe(clientStub);
 
-    // startSession called to resolve the server session ID (idempotent)
+    // writer.recordEvent called once with assistant_message eventType (durable path)
+    expect(writerRecordEventCalls.length).toBe(1);
+    const writeCall = writerRecordEventCalls[0] as Record<string, unknown>;
+    expect(writeCall.eventType).toBe('assistant_message');
+    expect((writeCall.payload as Record<string, unknown>).last_assistant_message).toBe('Here is what I did: found the bug.');
+
+    // startSession called to resolve the server session ID (idempotent, lifecycle)
     expect(startSessionCalls.length).toBe(1);
     const startCall = startSessionCalls[0] as Record<string, unknown>;
     expect(startCall.externalSessionId).toBe('session-sum-client-1');
@@ -331,7 +349,7 @@ describe('summarizeHandler — client runtime branch', () => {
     expect(result.exitCode).toBe(HOOK_EXIT_CODES.SUCCESS);
   });
 
-  it('returns { continue: true } even when startSession or endSession rejects (best-effort)', async () => {
+  it('returns success even when endSession rejects (lifecycle is best-effort)', async () => {
     endSessionImpl = async () => {
       throw new Error('server down');
     };
@@ -347,6 +365,31 @@ describe('summarizeHandler — client runtime branch', () => {
 
     expect(threw).toBe(false);
     expect(result!.continue).toBe(true);
+    // writer still recorded the assistant message (durable, separate from lifecycle)
+    expect(writerRecordEventCalls.length).toBe(1);
+    expect(workerCallLog.length).toBe(0);
+  });
+
+  it('returns success even when startSession rejects — endSession NOT called, writer still records', async () => {
+    startSessionImpl = async () => {
+      throw new Error('startSession failed');
+    };
+    const { summarizeHandler } = await import('../../../src/cli/handlers/summarize.js');
+
+    let threw = false;
+    let result: Awaited<ReturnType<typeof summarizeHandler.execute>> | undefined;
+    try {
+      result = await summarizeHandler.execute(summarizeInput());
+    } catch {
+      threw = true;
+    }
+
+    expect(threw).toBe(false);
+    expect(result!.continue).toBe(true);
+    // endSession must NOT have been called (startSession failed, no serverSessionId)
+    expect(endSessionCalls.length).toBe(0);
+    // writer still recorded the assistant message (durable content path is separate)
+    expect(writerRecordEventCalls.length).toBe(1);
     expect(workerCallLog.length).toBe(0);
   });
 

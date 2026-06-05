@@ -24,6 +24,14 @@ export interface RecordToolUseInput {
   payload: unknown;
 }
 
+export interface RecordEventInput {
+  cwd: string;
+  sessionId: string;
+  sourceEventId: string;
+  eventType: string;
+  payload: unknown;
+}
+
 export class ClientWriter {
   constructor(private readonly o: ClientWriterOptions) {}
 
@@ -31,15 +39,15 @@ export class ClientWriter {
     return this.o.fixedProjectId ?? this.o.resolver.resolve(cwd);
   }
 
-  async recordToolUse(input: RecordToolUseInput): Promise<void> {
-    // Capture the tool-use time ONCE so a spooled (offline) event keeps the
+  async recordEvent(input: RecordEventInput): Promise<void> {
+    // Capture the occurrence time ONCE so a spooled (offline) event keeps the
     // real occurrence time, not the time it was later queued or replayed.
     const occurredAtEpoch = Date.now();
     let projectId: string;
     try {
       projectId = await this.projectId(input.cwd);
     } catch {
-      this.spoolEvent(input, occurredAtEpoch);
+      this.spoolEventRecord(input, occurredAtEpoch);
       return;
     }
     try {
@@ -47,21 +55,25 @@ export class ClientWriter {
         projectId,
         contentSessionId: input.sessionId,
         sourceType: 'hook',
-        eventType: 'tool_use',
+        eventType: input.eventType,
         occurredAtEpoch,
         sourceEventId: input.sourceEventId,
         payload: input.payload,
       });
     } catch (error) {
       if (isServerBetaClientError(error) && error.isFallbackEligible()) {
-        this.spoolEvent(input, occurredAtEpoch);
+        this.spoolEventRecord(input, occurredAtEpoch);
       } else {
         logger.error('HOOK', 'client write permanent failure', { error: String(error) });
       }
     }
   }
 
-  private spoolEvent(input: RecordToolUseInput, occurredAtEpoch: number): void {
+  async recordToolUse(input: RecordToolUseInput): Promise<void> {
+    return this.recordEvent({ ...input, eventType: 'tool_use' });
+  }
+
+  private spoolEventRecord(input: RecordEventInput, occurredAtEpoch: number): void {
     const record: SpoolRecord = {
       id: input.sourceEventId,
       kind: 'event',
@@ -69,7 +81,7 @@ export class ClientWriter {
       body: {
         contentSessionId: input.sessionId,
         sourceType: 'hook',
-        eventType: 'tool_use',
+        eventType: input.eventType,
         occurredAtEpoch,
         sourceEventId: input.sourceEventId,
         payload: input.payload,

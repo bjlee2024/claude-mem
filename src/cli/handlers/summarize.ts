@@ -76,12 +76,26 @@ export const summarizeHandler: EventHandler = {
 
     const platformSource = normalizePlatformSource(input.platform);
 
+    const cwd = input.cwd ?? process.cwd();
     const runtime = resolveRuntimeContext();
     if (runtime.runtime === 'client') {
-      const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
+      const { client, resolver, spool, writer, fixedProjectId } = buildClientContext(runtime);
       try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      // Durable content: the assistant message drives summarization — spool on failure (writer never throws).
+      if (lastAssistantMessage) {
+        await writer.recordEvent({
+          cwd,
+          sessionId,
+          sourceEventId: crypto.randomUUID(),
+          eventType: 'assistant_message',
+          payload: {
+            last_assistant_message: lastAssistantMessage,
+            platformSource,
+          },
+        });
+      }
+      // Best-effort lifecycle (not spooled): start (to get the server session id) then end.
       try {
-        const cwd = input.cwd ?? process.cwd();
         const projectId = fixedProjectId ?? await resolver.resolve(cwd);
         const startResult = await client.startSession({
           projectId,
@@ -89,10 +103,9 @@ export const summarizeHandler: EventHandler = {
           contentSessionId: sessionId,
           platformSource,
         });
-        const serverSessionId = startResult.session.id;
-        await client.endSession({ sessionId: serverSessionId });
+        await client.endSession({ sessionId: startResult.session.id });
       } catch (error) {
-        logger.error('HOOK', 'client endSession failed (best-effort)', { error: String(error) });
+        logger.error('HOOK', 'client session end failed (best-effort)', { error: String(error) });
       }
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }

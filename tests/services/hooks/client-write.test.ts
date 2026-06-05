@@ -28,4 +28,17 @@ describe('ClientWriter', () => {
     await w.recordToolUse({ cwd: '/x/repo', sessionId: 's', sourceEventId: 'e1', payload: {} });
     expect(spool.depth()).toBe(0);
   });
+
+  it('recordEvent with custom eventType spools on eligible failure with that eventType in body', async () => {
+    const client = { recordEvent: async () => { throw new ServerBetaClientError('transport', 'conn refused'); } } as any;
+    const w = new ClientWriter({ client, resolver, spool });
+    await w.recordEvent({ cwd: '/x/repo', sessionId: 's', sourceEventId: 'e2', eventType: 'assistant_message', payload: { last_assistant_message: 'hello' } });
+    expect(spool.depth()).toBe(1);
+    expect(spool.peekIds()).toEqual(['e2']);
+    // Flush with a capturing sender to inspect the spooled record body
+    const captured: import('../../../src/services/hooks/spool.js').SpoolRecord[] = [];
+    await spool.flush(async (r) => { captured.push(r); return { ok: true }; });
+    expect(captured.length).toBe(1);
+    expect((captured[0].body as Record<string, unknown>).eventType).toBe('assistant_message');
+  });
 });
