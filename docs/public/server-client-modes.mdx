@@ -16,6 +16,15 @@ default local SQLite worker. Generation runs on the server, so **clients never n
 provider API key.**
 </Note>
 
+<Note>
+**Installing the CLI.** The commands below use this fork's package
+`@bjlee2024/claude-mem`. Before it's published to npm, run the same commands
+straight from GitHub — replace `npx @bjlee2024/claude-mem` with
+`npx github:bjlee2024/claude-mem`. Server-side commands that touch the database
+(`server enroll`, `install --mode server`) currently require **Bun**; run those on
+the server host from a local clone: `bun dist/npx-cli/index.js …`.
+</Note>
+
 ## When to use it
 
 | You want… | Use |
@@ -50,7 +59,7 @@ provider API key.**
 On the machine that will hold memory:
 
 ```bash
-npx claude-mem install --mode server
+npx @bjlee2024/claude-mem install --mode server
 ```
 
 This brings up the server-beta Docker stack (Postgres, Valkey, server, worker), applies
@@ -97,14 +106,14 @@ Generate a one-line enrollment token on the server. **Use the address your other
 can actually reach** — a tailnet IP, not `localhost`:
 
 ```bash
-npx claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
 ```
 
 It prints:
 
 ```
 Enroll a device with:
-  npx claude-mem install --mode client --enroll eyJ1cmwiOiJodHRw...
+  npx @bjlee2024/claude-mem install --mode client --enroll eyJ1cmwiOiJodHRw...
 ```
 
 The token bundles the server URL and a **team-scoped API key** (read + write, no fixed
@@ -129,7 +138,7 @@ Use a distinct `--label` per device so you can revoke one device later without
 touching the others:
 
 ```bash
-npx claude-mem server api-key revoke   # revoke a specific device's key
+npx @bjlee2024/claude-mem server api-key revoke   # revoke a specific device's key
 ```
 
 When the server runs in the Docker stack (Postgres not published to the host),
@@ -138,7 +147,7 @@ point the CLI at the Postgres container's address:
 ```bash
 PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' claude-mem-postgres-1)
 CLAUDE_MEM_SERVER_DATABASE_URL="postgres://<user>:<pass>@$PG_IP:5432/<db>" \
-  npx claude-mem server enroll --url http://<server-reachable-host>:37700 --label my-laptop
+  npx @bjlee2024/claude-mem server enroll --url http://<server-reachable-host>:37700 --label my-laptop
 ```
 
 ## 3. Install the client
@@ -146,13 +155,13 @@ CLAUDE_MEM_SERVER_DATABASE_URL="postgres://<user>:<pass>@$PG_IP:5432/<db>" \
 On each device:
 
 ```bash
-npx claude-mem install --mode client --enroll <token>
+npx @bjlee2024/claude-mem install --mode client --enroll <token>
 ```
 
 Or without a token:
 
 ```bash
-npx claude-mem install --mode client --server-url http://100.x.y.z:37700 --token <api-key>
+npx @bjlee2024/claude-mem install --mode client --server-url http://100.x.y.z:37700 --token <api-key>
 ```
 
 The client install:
@@ -169,7 +178,7 @@ memory is injected at session start.
 ## 4. Verify
 
 ```bash
-npx claude-mem client status
+npx @bjlee2024/claude-mem client status
 ```
 
 ```json
