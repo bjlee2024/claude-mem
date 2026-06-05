@@ -117,6 +117,30 @@ once, paste it over a trusted channel.
 host). If Postgres isn't published to the host, target the container's address.
 </Note>
 
+### Where the token comes from (and what if you lose it)
+
+The token is **printed once, at enroll time** — there is nowhere to look it up
+later. The server stores only a hash of the underlying API key, never the raw
+token. If you lose it, just run `server enroll` again to mint a new one; existing
+devices are unaffected (each device gets its own key). Treat the token like a
+password — it embeds a read+write API key — so don't paste it into chats or logs.
+
+Use a distinct `--label` per device so you can revoke one device later without
+touching the others:
+
+```bash
+npx claude-mem server api-key revoke   # revoke a specific device's key
+```
+
+When the server runs in the Docker stack (Postgres not published to the host),
+point the CLI at the Postgres container's address:
+
+```bash
+PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' claude-mem-postgres-1)
+CLAUDE_MEM_SERVER_DATABASE_URL="postgres://<user>:<pass>@$PG_IP:5432/<db>" \
+  npx claude-mem server enroll --url http://<server-reachable-host>:37700 --label my-laptop
+```
+
 ## 3. Install the client
 
 On each device:
