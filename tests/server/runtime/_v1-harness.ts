@@ -45,13 +45,35 @@ export async function createTeamScopedKey(
   return material.raw;
 }
 
+/**
+ * Create a project-scoped api key for the given teamId + projectId.
+ * Returns the plaintext raw key.
+ */
+export async function createProjectScopedKey(
+  storage: PostgresStorageRepositories,
+  teamId: string,
+  projectId: string,
+  label?: string,
+): Promise<string> {
+  const material = newApiKey();
+  await storage.auth.createApiKey({
+    keyHash: material.hash,
+    teamId,
+    projectId,
+    actorId: label ?? 'system:v1-harness-project-key',
+    scopes: ['memories:read', 'memories:write'],
+  });
+  return material.raw;
+}
+
 export interface V1ServerContext {
   port: number;
   client: PostgresPoolClient;
   teamId: string;
   projectId: string;
   teamScopedKey: string;
-  authedPost: (path: string, body: unknown) => Promise<Response>;
+  authedPost: (path: string, body: unknown, overrideKey?: string) => Promise<Response>;
+  createProjectScopedKey: (projectId: string) => Promise<string>;
   close: () => Promise<void>;
 }
 
@@ -113,26 +135,29 @@ export async function startV1Server(): Promise<V1ServerContext> {
   if (!address || typeof address === 'string') throw new Error('no port');
   const port = address.port;
 
-  const authedPost = (path: string, body: unknown): Promise<Response> =>
+  const authedPost = (path: string, body: unknown, overrideKey?: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}${path}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${teamScopedKey}`,
+        Authorization: `Bearer ${overrideKey ?? teamScopedKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
     });
 
   const close = async (): Promise<void> => {
-    try { await server.close(); } catch (error: unknown) {
+    try {
+      await server.close();
+    } catch (error: unknown) {
       const code = (error as NodeJS.ErrnoException | undefined)?.code;
       if (code !== 'ERR_SERVER_NOT_RUNNING') throw error;
+    } finally {
+      await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      client.release();
+      await pool.end();
+      loggerSpies.forEach(spy => spy.mockRestore());
+      mock.restore();
     }
-    await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-    client.release();
-    await pool.end();
-    loggerSpies.forEach(spy => spy.mockRestore());
-    mock.restore();
   };
 
   return {
@@ -142,6 +167,8 @@ export async function startV1Server(): Promise<V1ServerContext> {
     projectId: project.id,
     teamScopedKey,
     authedPost,
+    createProjectScopedKey: (projId: string) =>
+      createProjectScopedKey(storage, team.id, projId),
     close,
   };
 }

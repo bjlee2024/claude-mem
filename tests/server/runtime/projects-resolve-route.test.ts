@@ -38,4 +38,10 @@ describe('POST /v1/projects/resolve', () => {
     const resp = await ctx.authedPost('/v1/projects/resolve', { name: '' });
     expect(resp.status).toBe(400);
   });
+
+  it('rejects a project-scoped key with 403', async () => {
+    const projectKey = await ctx.createProjectScopedKey(ctx.projectId);
+    const resp = await ctx.authedPost('/v1/projects/resolve', { name: 'whatever' }, projectKey);
+    expect(resp.status).toBe(403);
+  });
 });
