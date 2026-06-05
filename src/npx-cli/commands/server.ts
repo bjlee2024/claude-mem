@@ -22,7 +22,7 @@ const UNSUPPORTED_SERVER_COMMANDS = new Set([
 
 function printServerUsage(): void {
   console.error(`Usage: ${pc.bold('npx claude-mem server <command>')}`);
-  console.error('Commands: start, stop, restart, status, logs, doctor, migrate, export, import, api-key create|list|revoke, keys rotate, worker start, jobs status|failed|retry|cancel');
+  console.error('Commands: start, stop, restart, status, logs, doctor, migrate, export, import, api-key create|list|revoke, enroll, keys rotate, worker start, jobs status|failed|retry|cancel');
 }
 
 function failUnsupported(command: string): never {
@@ -118,6 +118,11 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
     process.exit(1);
   }
 
+  if (subCommand === 'enroll') {
+    await runServerEnrollCommand(argv.slice(1));
+    return;
+  }
+
   if (subCommand === 'jobs') {
     // Phase 12 — operator queue console. Uses Postgres (canonical) +
     // BullMQ (transport) directly. See src/npx-cli/commands/server-jobs.ts.
@@ -171,6 +176,93 @@ async function runServerBetaKeysRotateCommand(): Promise<void> {
     projectId: result.projectId,
     settingsPath,
   }, null, 2));
+}
+
+async function runServerEnrollCommand(args: string[]): Promise<void> {
+  if (!process.env.CLAUDE_MEM_SERVER_DATABASE_URL) {
+    console.error(pc.red('Cannot enroll a device: CLAUDE_MEM_SERVER_DATABASE_URL is not set.'));
+    console.error('Configure Postgres first, then re-run this command.');
+    process.exit(1);
+  }
+
+  // Optional --label <name>.
+  let label: string | undefined;
+  const labelIdx = args.indexOf('--label');
+  if (labelIdx !== -1) {
+    label = args[labelIdx + 1];
+    if (!label) {
+      console.error(pc.red('--label requires a value, e.g. --label laptop'));
+      process.exit(1);
+    }
+  }
+
+  const { createPostgresPool } = await import('../../storage/postgres/pool.js');
+  const { parsePostgresConfig } = await import('../../storage/postgres/config.js');
+  const { SettingsDefaultsManager } = await import('../../shared/SettingsDefaultsManager.js');
+  const { createEnrollment } = await import('./server-enroll.js');
+  const { join } = await import('path');
+  const { existsSync, readFileSync } = await import('fs');
+
+  const config = parsePostgresConfig({ requireDatabaseUrl: true });
+  if (!config) {
+    console.error(pc.red('Cannot enroll a device: CLAUDE_MEM_SERVER_DATABASE_URL is not set.'));
+    process.exit(1);
+  }
+
+  // Prefer the operator-configured server URL from settings.json; fall back to
+  // the local default so a single-host install works out of the box.
+  let serverUrl = 'http://127.0.0.1:37700';
+  const settingsPath = join(SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR'), 'settings.json');
+  if (existsSync(settingsPath)) {
+    try {
+      const raw = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+      const flat = (raw.env && typeof raw.env === 'object' ? raw.env : raw) as Record<string, unknown>;
+      const configuredUrl = flat.CLAUDE_MEM_SERVER_BETA_URL;
+      if (typeof configuredUrl === 'string' && configuredUrl.length > 0) {
+        serverUrl = configuredUrl;
+      }
+    } catch {
+      // ignore — fall back to the local default URL
+    }
+  }
+
+  const pool = createPostgresPool(config);
+  try {
+    const teamId = await ensureDefaultTeamId(pool);
+    const result = await createEnrollment({ pool, teamId, serverUrl, label });
+    console.log('Enroll a device with:');
+    console.log(`  npx claude-mem install --mode client --enroll ${result.token}`);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+/**
+ * Resolve the team to scope the enrollment key under. The install bootstrap
+ * creates a single "local-hook-team"; reuse it when present, otherwise fall
+ * back to the single existing team, otherwise create one. Team-scoping (not
+ * project-scoping) is what lets the minted key write to many per-repo projects.
+ */
+async function ensureDefaultTeamId(pool: import('../../storage/postgres/pool.js').PostgresPool): Promise<string> {
+  const byName = await pool.query<{ id: string }>(
+    `SELECT id FROM teams WHERE name = $1 LIMIT 1`,
+    ['local-hook-team'],
+  );
+  if (byName.rows[0]) {
+    return byName.rows[0].id;
+  }
+  const any = await pool.query<{ id: string }>(
+    `SELECT id FROM teams ORDER BY created_at ASC LIMIT 1`,
+  );
+  if (any.rows[0]) {
+    return any.rows[0].id;
+  }
+  const { PostgresTeamsRepository } = await import('../../storage/postgres/teams.js');
+  const team = await new PostgresTeamsRepository(pool).create({
+    name: 'local-hook-team',
+    metadata: { source: 'server-enroll' },
+  });
+  return team.id;
 }
 
 async function lookupApiKeyIdByPlaintext(rawKey: string): Promise<string | null> {
