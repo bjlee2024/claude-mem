@@ -108,7 +108,7 @@ async function publish() {
     await execAsync(`git commit -m "chore: Release v${newVersion}
 
 Marketplace release for Claude Code plugin
-https://github.com/thedotmack/claude-mem"`);
+https://github.com/bjlee2024/claude-mem"`);
     await execAsync(`git tag v${newVersion}`);
     console.log(`✓ Created commit and tag v${newVersion}`);
 
@@ -118,7 +118,7 @@ https://github.com/thedotmack/claude-mem"`);
     console.log('✓ Pushed to git');
 
     console.log(`\n✅ Successfully released v${newVersion}! 🎉`);
-    console.log(`\n🏷️  Tag: https://github.com/thedotmack/claude-mem/releases/tag/v${newVersion}`);
+    console.log(`\n🏷️  Tag: https://github.com/bjlee2024/claude-mem/releases/tag/v${newVersion}`);
     console.log(`📦 Marketplace will sync from this tag automatically`);
 
   } catch (error) {

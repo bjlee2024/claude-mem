@@ -1,13 +1,13 @@
 {
-  "name": "claude-mem",
+  "name": "@bjlee2024/claude-mem",
   "version": "13.4.0",
   "description": "Memory compression system for Claude Code - persist context across sessions",
   "author": {
     "name": "Alex Newman",
-    "url": "https://github.com/thedotmack"
+    "url": "https://github.com/bjlee2024"
   },
-  "homepage": "https://github.com/thedotmack/claude-mem#readme",
-  "repository": "https://github.com/thedotmack/claude-mem",
+  "homepage": "https://github.com/bjlee2024/claude-mem#readme",
+  "repository": "https://github.com/bjlee2024/claude-mem",
   "license": "Apache-2.0",
   "keywords": [
     "claude",
@@ -35,7 +35,7 @@
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/thedotmack/claude-mem",
+    "websiteURL": "https://github.com/bjlee2024/claude-mem",
     "defaultPrompt": [
       "Find what I already learned about this codebase before I start a new task.",
       "Show recent observations related to the files I am editing right now.",

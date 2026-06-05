@@ -1,6 +1,6 @@
 datasets/
 node_modules/
-dist/
+# dist/ (committed for npx github: distribution)
 **/_tree-sitter/
 *.log
 .DS_Store

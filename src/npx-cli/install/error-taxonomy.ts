@@ -97,7 +97,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
     severity: ErrorSeverity.ABORT,
     match: (cause) => /\bERESOLVE\b/.test(causeMessage(cause)),
     remediation: () =>
-      'ERESOLVE peer-dependency conflict in marketplace deps that --legacy-peer-deps could not resolve. Open an issue at https://github.com/thedotmack/claude-mem/issues with the conflicting peer ranges shown above.',
+      'ERESOLVE peer-dependency conflict in marketplace deps that --legacy-peer-deps could not resolve. Open an issue at https://github.com/bjlee2024/claude-mem/issues with the conflicting peer ranges shown above.',
   },
   {
     id: 'bun-install-network-fail',
@@ -120,7 +120,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
       ctx.component === 'plugin-json' &&
       /Unexpected token|JSON|parse/i.test(causeMessage(cause)),
     remediation: () =>
-      'Existing plugin.json is corrupt. Run `rm -rf ~/.claude/plugins/marketplaces/thedotmack` and re-run `npx claude-mem install`.',
+      'Existing plugin.json is corrupt. Run `rm -rf ~/.claude/plugins/marketplaces/bjlee2024` and re-run `npx claude-mem install`.',
   },
   {
     id: 'all-ides-failed',
@@ -169,7 +169,7 @@ export const ERROR_CATEGORIES: ErrorCategory[] = [
     severity: ErrorSeverity.ABORT,
     match: () => true,
     remediation: (ctx) =>
-      `An unexpected installer error occurred. Capture ${ctx.dataDir}/last-install-error.json and open an issue at https://github.com/thedotmack/claude-mem/issues.`,
+      `An unexpected installer error occurred. Capture ${ctx.dataDir}/last-install-error.json and open an issue at https://github.com/bjlee2024/claude-mem/issues.`,
   },
 ];
 

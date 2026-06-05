@@ -5,7 +5,7 @@
   "kind": "memory",
   "version": "13.4.0",
   "license": "Apache-2.0",
-  "author": "thedotmack",
+  "author": "bjlee2024",
   "homepage": "https://claude-mem.ai",
   "skills": ["skills/make-plan", "skills/do"],
   "configSchema": {

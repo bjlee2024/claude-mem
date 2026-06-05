@@ -33,7 +33,7 @@ export function findPreBuiltPluginDirectory(): string | null {
   const possibleRoots = [
     path.join(
       process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude'),
-      'plugins', 'marketplaces', 'thedotmack',
+      'plugins', 'marketplaces', 'bjlee2024',
     ),
     process.cwd(),
   ];
@@ -53,7 +53,7 @@ export function findPluginManifestPath(): string | null {
   const possibleRoots = [
     path.join(
       process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude'),
-      'plugins', 'marketplaces', 'thedotmack',
+      'plugins', 'marketplaces', 'bjlee2024',
     ),
     process.cwd(),
   ];
@@ -72,7 +72,7 @@ export function findPluginSkillsDirectory(): string | null {
   const possibleRoots = [
     path.join(
       process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude'),
-      'plugins', 'marketplaces', 'thedotmack',
+      'plugins', 'marketplaces', 'bjlee2024',
     ),
     process.cwd(),
   ];

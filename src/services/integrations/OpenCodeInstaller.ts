@@ -30,7 +30,7 @@ export function findBuiltPluginPath(): string | null {
   const possiblePaths = [
     path.join(
       process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude'),
-      'plugins', 'marketplaces', 'thedotmack',
+      'plugins', 'marketplaces', 'bjlee2024',
       'dist', 'opencode-plugin', 'index.js',
     ),
     path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'dist', 'opencode-plugin', 'index.js'),

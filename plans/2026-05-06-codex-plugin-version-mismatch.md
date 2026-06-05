@@ -7,7 +7,7 @@ Date: 2026-05-06
 Codex is still exposing `claude-mem` from:
 
 ```text
-/Users/alexnewman/.codex/plugins/cache/thedotmack/claude-mem/12.3.1
+/Users/alexnewman/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1
 ```
 
 That cache entry is the source of the `claude-mem:...` skills loaded in this Codex session. The working tree and the Codex marketplace clone both advertise `12.7.2`, but the enabled Codex plugin points at the old installed cache. This is not a model-memory issue.
@@ -30,10 +30,10 @@ The likely root cause is an incomplete migration from marketplace registration t
   - `/Users/alexnewman/.codex/.tmp/marketplaces/claude-mem-local/.codex-plugin/plugin.json` is `12.7.2`
 
 - Active enabled plugin state is still old:
-  - `/Users/alexnewman/.codex/config.toml` contains `[plugins."claude-mem@thedotmack"] enabled = true`
-  - The only `claude-mem` plugin cache under `~/.codex/plugins/cache/thedotmack/claude-mem` is `12.3.1`
-  - `/Users/alexnewman/.codex/plugins/cache/thedotmack/claude-mem/12.3.1/package.json` is `12.3.1`
-  - `/Users/alexnewman/.codex/plugins/cache/thedotmack/claude-mem/12.3.1/.install-version` records `{"version":"12.3.1", ...}`
+  - `/Users/alexnewman/.codex/config.toml` contains `[plugins."claude-mem@bjlee2024"] enabled = true`
+  - The only `claude-mem` plugin cache under `~/.codex/plugins/cache/bjlee2024/claude-mem` is `12.3.1`
+  - `/Users/alexnewman/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1/package.json` is `12.3.1`
+  - `/Users/alexnewman/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1/.install-version` records `{"version":"12.3.1", ...}`
 
 - The active cache is not shaped like the new first-class Codex bundle:
   - It has `.claude-plugin/plugin.json`
@@ -57,11 +57,11 @@ The likely root cause is an incomplete migration from marketplace registration t
 There are two independent states:
 
 1. Marketplace source state: current and registered as `claude-mem-local`.
-2. Installed plugin cache state: stale and enabled as `claude-mem@thedotmack`.
+2. Installed plugin cache state: stale and enabled as `claude-mem@bjlee2024`.
 
 Codex loads skills, hooks, and MCP metadata from the installed plugin cache, not directly from the marketplace source. Since the installed cache is still `12.3.1`, every new Codex session sees `claude-mem` as `12.3.1`, even though the marketplace clone is already at `12.7.2`.
 
-The `claude-mem@thedotmack` plugin ID also suggests this cache came from an older GitHub marketplace install path, while the current installer registers `claude-mem-local`. That mismatch needs to be handled explicitly during repair and install.
+The `claude-mem@bjlee2024` plugin ID also suggests this cache came from an older GitHub marketplace install path, while the current installer registers `claude-mem-local`. That mismatch needs to be handled explicitly during repair and install.
 
 ## Phase 0: Reproduce And Baseline
 
@@ -71,12 +71,12 @@ What to do:
   - `codex --version`
   - `sed -n '1,220p' ~/.codex/config.toml`
   - `find ~/.codex/plugins/cache -maxdepth 5 -type f \( -name 'plugin.json' -o -name 'package.json' -o -name '.mcp.json' -o -name 'codex-hooks.json' \) -print`
-  - `find ~/.codex/plugins/cache/thedotmack/claude-mem -maxdepth 2 -type d -print`
+  - `find ~/.codex/plugins/cache/bjlee2024/claude-mem -maxdepth 2 -type d -print`
 
 - Confirm which paths Codex injects into the session skill list:
   - Start a fresh Codex session.
   - Inspect the available skills list for `claude-mem:` paths.
-  - Expected current bad path: `~/.codex/plugins/cache/thedotmack/claude-mem/12.3.1/skills`.
+  - Expected current bad path: `~/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1/skills`.
 
 Verification:
 
@@ -95,12 +95,12 @@ What to do:
 
 - Back up the current Codex plugin state:
   - `cp ~/.codex/config.toml ~/.codex/config.toml.bak-$(date +%Y%m%d-%H%M%S)`
-  - Archive or copy `~/.codex/plugins/cache/thedotmack/claude-mem/12.3.1`
+  - Archive or copy `~/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1`
 
 - Remove the stale enabled plugin state through supported UI where possible:
   - Open Codex.
   - Run `/plugins`.
-  - Disable or uninstall `claude-mem@thedotmack` if it appears.
+  - Disable or uninstall `claude-mem@bjlee2024` if it appears.
 
 - Register or refresh the current marketplace:
   - `codex plugin marketplace upgrade claude-mem-local`
@@ -121,7 +121,7 @@ Verification:
 Anti-pattern guards:
 
 - Do not manually copy the repository into `~/.codex/plugins/cache` as the primary fix. Use it only as a diagnostic fallback.
-- Do not leave both `claude-mem@thedotmack` and a new local `claude-mem` enabled if Codex treats them as distinct plugins.
+- Do not leave both `claude-mem@bjlee2024` and a new local `claude-mem` enabled if Codex treats them as distinct plugins.
 - Do not accept "marketplace upgraded" as proof. The cache path and loaded skill path are the source of truth.
 
 ## Phase 2: Installer Fix
@@ -179,7 +179,7 @@ What to implement:
 - Extend `npx claude-mem repair --ide codex-cli` or equivalent repair flow to handle Codex first-class plugin state.
 - The repair should:
   - Register or upgrade the local marketplace.
-  - Detect stale enabled `claude-mem@thedotmack`.
+  - Detect stale enabled `claude-mem@bjlee2024`.
   - Tell the user whether manual `/plugins` installation is still required.
   - Verify the active cache after restart or after the user completes `/plugins`.
 
@@ -209,9 +209,9 @@ What to update:
   - Plugin install/enable via `/plugins`.
 
 - Add troubleshooting for this exact mismatch:
-  - Symptom: Codex skill list shows `~/.codex/plugins/cache/thedotmack/claude-mem/12.3.1`.
+  - Symptom: Codex skill list shows `~/.codex/plugins/cache/bjlee2024/claude-mem/12.3.1`.
   - Cause: stale installed plugin cache, despite current marketplace source.
-  - Fix: uninstall old `claude-mem@thedotmack`, install from `claude-mem (local)`, restart Codex.
+  - Fix: uninstall old `claude-mem@bjlee2024`, install from `claude-mem (local)`, restart Codex.
 
 Code/doc references:
 
@@ -231,7 +231,7 @@ Manual verification checklist:
 - Fresh install on a clean Codex profile.
 - Upgrade from old `12.3.1` cache.
 - Upgrade from current marketplace but stale installed cache.
-- Duplicate install case with both `claude-mem@thedotmack` and local `claude-mem`.
+- Duplicate install case with both `claude-mem@bjlee2024` and local `claude-mem`.
 
 Acceptance criteria:
 
@@ -246,4 +246,4 @@ Acceptance criteria:
 - Does the Codex `/plugins` UI use marketplace name, repository owner, or plugin author to derive the installed plugin cache namespace?
 - Does `codex plugin marketplace upgrade claude-mem-local` intentionally avoid updating already-installed plugin caches?
 - Is there a hidden or upcoming non-interactive plugin install command that can replace the manual `/plugins` step?
-- Should the installer remove or disable `claude-mem@thedotmack` when installing `claude-mem-local`, or should it only warn?
+- Should the installer remove or disable `claude-mem@bjlee2024` when installing `claude-mem-local`, or should it only warn?

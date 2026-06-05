@@ -1,5 +1,5 @@
 {
-  "name": "claude-mem",
+  "name": "@bjlee2024/claude-mem",
   "version": "13.4.0",
   "description": "Memory compression system for Claude Code - persist context across sessions",
   "keywords": [
@@ -19,11 +19,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thedotmack/claude-mem.git"
+    "url": "https://github.com/bjlee2024/claude-mem.git"
   },
-  "homepage": "https://github.com/thedotmack/claude-mem#readme",
+  "homepage": "https://github.com/bjlee2024/claude-mem#readme",
   "bugs": {
-    "url": "https://github.com/thedotmack/claude-mem/issues"
+    "url": "https://github.com/bjlee2024/claude-mem/issues"
   },
   "type": "module",
   "bin": {
@@ -63,7 +63,7 @@
   "scripts": {
     "dev": "npm run build-and-sync",
     "build": "node scripts/sync-plugin-manifests.js && node scripts/build-hooks.js",
-    "build-and-sync": "npm run build && npm run sync-marketplace && sleep 1 && (cd ~/.claude/plugins/marketplaces/thedotmack && npm run worker:restart)",
+    "build-and-sync": "npm run build && npm run sync-marketplace && sleep 1 && (cd ~/.claude/plugins/marketplaces/bjlee2024 && npm run worker:restart)",
     "sync-marketplace": "node scripts/sync-marketplace.cjs",
     "sync-marketplace:force": "node scripts/sync-marketplace.cjs --force",
     "build:binaries": "node scripts/build-worker-binary.js",

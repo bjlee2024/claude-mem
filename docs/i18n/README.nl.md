@@ -2,11 +2,11 @@
 
 <h1 align="center">
   <br>
-  <a href="https://github.com/thedotmack/claude-mem">
+  <a href="https://github.com/bjlee2024/claude-mem">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-dark-mode.webp">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp" alt="Claude-Mem" width="400">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-dark-mode.webp">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp">
+      <img src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp" alt="Claude-Mem" width="400">
     </picture>
   </a>
   <br>
@@ -57,7 +57,7 @@
   <a href="package.json">
     <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node">
   </a>
-  <a href="https://github.com/thedotmack/awesome-claude-code">
+  <a href="https://github.com/bjlee2024/awesome-claude-code">
     <img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Claude Code">
   </a>
 </p>
@@ -65,9 +65,9 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/15496" target="_blank">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg" alt="thedotmack/claude-mem | Trendshift" width="250" height="55"/>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge.svg">
+      <img src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge.svg" alt="bjlee2024/claude-mem | Trendshift" width="250" height="55"/>
     </picture>
   </a>
 </p>
@@ -75,9 +75,9 @@
 <br>
 
 <p align="center">
-  <a href="https://github.com/thedotmack/claude-mem">
+  <a href="https://github.com/bjlee2024/claude-mem">
     <picture>
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/cm-preview.gif" alt="Claude-Mem Preview" width="800">
+      <img src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/cm-preview.gif" alt="Claude-Mem Preview" width="800">
     </picture>
   </a>
 </p>
@@ -103,7 +103,7 @@
 Start een nieuwe Claude Code sessie in de terminal en voer de volgende commando's in:
 
 ```
-> /plugin marketplace add thedotmack/claude-mem
+> /plugin marketplace add bjlee2024/claude-mem
 
 > /plugin install claude-mem
 ```
@@ -254,7 +254,7 @@ Zie de **[Probleemoplossingsgids](https://docs.claude-mem.ai/troubleshooting)** 
 Maak uitgebreide bugrapporten met de geautomatiseerde generator:
 
 ```bash
-cd ~/.claude/plugins/marketplaces/thedotmack
+cd ~/.claude/plugins/marketplaces/bjlee2024
 npm run bug-report
 ```
 
@@ -276,7 +276,7 @@ Zie [Ontwikkelingsgids](https://docs.claude-mem.ai/development) voor bijdragewor
 
 This project is licensed under the **Apache License 2.0** (Apache-2.0).
 
-Copyright (C) 2025 Alex Newman (@thedotmack). All rights reserved.
+Copyright (C) 2025 Alex Newman (@bjlee2024). All rights reserved.
 
 See the [LICENSE](LICENSE) file for full details.
 
@@ -290,9 +290,9 @@ Apache-2.0 allows broad use, modification, distribution, and commercial use, sub
 ## Ondersteuning
 
 - **Documentatie**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/thedotmack/claude-mem/issues)
-- **Repository**: [github.com/thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)
-- **Auteur**: Alex Newman ([@thedotmack](https://github.com/thedotmack))
+- **Issues**: [GitHub Issues](https://github.com/bjlee2024/claude-mem/issues)
+- **Repository**: [github.com/bjlee2024/claude-mem](https://github.com/bjlee2024/claude-mem)
+- **Auteur**: Alex Newman ([@bjlee2024](https://github.com/bjlee2024))
 
 ---
 

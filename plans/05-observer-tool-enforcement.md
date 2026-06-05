@@ -451,7 +451,7 @@
 
 ### Tasks
 
-1. **Open a GitHub Security Advisory** (draft, not published) on `thedotmack/claude-mem`:
+1. **Open a GitHub Security Advisory** (draft, not published) on `bjlee2024/claude-mem`:
    - Title: `Observer SDK could execute filesystem-modifying tools despite prompt asserting "no access to tools" (#2332)`
    - Severity: Medium (CVSS ~5.5: requires prompt injection or SDK behavior change to exploit; impact is local filesystem write under user's UID).
    - Affected versions: `< <fix-version>`.
@@ -481,7 +481,7 @@
 
 ### Verification
 
-- `gh advisory list --repo thedotmack/claude-mem` shows the new advisory.
+- `gh advisory list --repo bjlee2024/claude-mem` shows the new advisory.
 - `gh release view v<fix-version>` body contains the Security section.
 - After `npm run changelog:generate`, `CHANGELOG.md` has the new version entry with `### Security` header.
 - Issue #2332 is closed and references the release tag.

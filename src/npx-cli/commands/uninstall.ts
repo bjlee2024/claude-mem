@@ -70,7 +70,7 @@ function removeMarketplaceDirectory(): boolean {
 }
 
 function removeCacheDirectory(): boolean {
-  const cacheDirectory = join(pluginsDirectory(), 'cache', 'thedotmack', 'claude-mem');
+  const cacheDirectory = join(pluginsDirectory(), 'cache', 'bjlee2024', 'claude-mem');
   if (existsSync(cacheDirectory)) {
     rmSync(cacheDirectory, { recursive: true, force: true });
     return true;
@@ -80,16 +80,16 @@ function removeCacheDirectory(): boolean {
 
 function removeFromKnownMarketplaces(): void {
   const knownMarketplaces = readJsonSafe<Record<string, any>>(knownMarketplacesPath(), {});
-  if (knownMarketplaces['thedotmack']) {
-    delete knownMarketplaces['thedotmack'];
+  if (knownMarketplaces['bjlee2024']) {
+    delete knownMarketplaces['bjlee2024'];
     writeJsonFileAtomic(knownMarketplacesPath(), knownMarketplaces);
   }
 }
 
 function removeFromInstalledPlugins(): void {
   const installedPlugins = readJsonSafe<Record<string, any>>(installedPluginsPath(), {});
-  if (installedPlugins.plugins?.['claude-mem@thedotmack']) {
-    delete installedPlugins.plugins['claude-mem@thedotmack'];
+  if (installedPlugins.plugins?.['claude-mem@bjlee2024']) {
+    delete installedPlugins.plugins['claude-mem@bjlee2024'];
     writeJsonFileAtomic(installedPluginsPath(), installedPlugins);
   }
 }
@@ -127,8 +127,8 @@ function stripLegacyClaudeMemAlias(): void {
 
 function removeFromClaudeSettings(): void {
   const settings = readJsonSafe<Record<string, any>>(claudeSettingsPath(), {});
-  if (settings.enabledPlugins?.['claude-mem@thedotmack'] !== undefined) {
-    delete settings.enabledPlugins['claude-mem@thedotmack'];
+  if (settings.enabledPlugins?.['claude-mem@bjlee2024'] !== undefined) {
+    delete settings.enabledPlugins['claude-mem@bjlee2024'];
     writeJsonFileAtomic(claudeSettingsPath(), settings);
   }
 }
@@ -187,7 +187,7 @@ function removeStrayClaudeMemPaths(): number {
     }
   }
 
-  const pluginDataDir = join(home, '.claude', 'plugins', 'data', 'claude-mem-thedotmack');
+  const pluginDataDir = join(home, '.claude', 'plugins', 'data', 'claude-mem-bjlee2024');
   if (existsSync(pluginDataDir)) {
     try {
       rmSync(pluginDataDir, { recursive: true, force: true });

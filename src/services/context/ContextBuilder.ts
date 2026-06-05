@@ -31,7 +31,7 @@ const VERSION_MARKER_PATH = path.join(
   '.claude',
   'plugins',
   'marketplaces',
-  'thedotmack',
+  'bjlee2024',
   'plugin',
   '.install-version'
 );

@@ -1,10 +1,10 @@
 <h1 align="center">
   <br>
-  <a href="https://github.com/thedotmack/claude-mem">
+  <a href="https://github.com/bjlee2024/claude-mem">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-dark-mode.webp">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp" alt="Claude-Mem" width="400">
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-dark-mode.webp">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp">
+      <img src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/claude-mem-logo-for-light-mode.webp" alt="Claude-Mem" width="400">
     </picture>
   </a>
   <br>
@@ -57,7 +57,7 @@
   <a href="package.json">
     <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node">
   </a>
-  <a href="https://github.com/thedotmack/awesome-claude-code">
+  <a href="https://github.com/bjlee2024/awesome-claude-code">
     <img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Claude Code">
   </a>
 </p>
@@ -65,9 +65,9 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/15496" target="_blank">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg">
-      <img src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/trendshift-badge.svg" alt="thedotmack/claude-mem | Trendshift" width="250" height="55"/>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge.svg">
+      <img src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/trendshift-badge.svg" alt="bjlee2024/claude-mem | Trendshift" width="250" height="55"/>
     </picture>
   </a>
 </p>
@@ -77,10 +77,10 @@
 <table align="center">
   <tr>
     <td align="center">
-      <a href="https://github.com/thedotmack/claude-mem">
+      <a href="https://github.com/bjlee2024/claude-mem">
         <picture>
           <img
-            src="https://raw.githubusercontent.com/thedotmack/claude-mem/main/docs/public/cm-preview.gif"
+            src="https://raw.githubusercontent.com/bjlee2024/claude-mem/main/docs/public/cm-preview.gif"
             alt="Claude-Mem Preview"
             width="500"
           >
@@ -88,19 +88,19 @@
       </a>
     </td>
     <td align="center">
-      <a href="https://www.star-history.com/#thedotmack/claude-mem&Date">
+      <a href="https://www.star-history.com/#bjlee2024/claude-mem&Date">
         <picture>
           <source
             media="(prefers-color-scheme: dark)"
-            srcset="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&theme=dark&legend=top-left"
+            srcset="https://api.star-history.com/image?repos=bjlee2024/claude-mem&type=date&theme=dark&legend=top-left"
           />
           <source
             media="(prefers-color-scheme: light)"
-            srcset="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&legend=top-left"
+            srcset="https://api.star-history.com/image?repos=bjlee2024/claude-mem&type=date&legend=top-left"
           />
           <img
             alt="Star History Chart"
-            src="https://api.star-history.com/image?repos=thedotmack/claude-mem&type=date&legend=top-left"
+            src="https://api.star-history.com/image?repos=bjlee2024/claude-mem&type=date&legend=top-left"
             width="500"
           />
         </picture>
@@ -147,7 +147,7 @@ npx claude-mem install --ide opencode
 Or install from the plugin marketplace inside Claude Code:
 
 ```bash
-/plugin marketplace add thedotmack/claude-mem
+/plugin marketplace add bjlee2024/claude-mem
 
 /plugin install claude-mem
 ```
@@ -326,7 +326,7 @@ Edit your settings file at `~/.claude-mem/settings.json`:
 Modes are defined in `plugin/modes/`. To see all available modes locally:
 
 ```bash
-ls ~/.claude/plugins/marketplaces/thedotmack/plugin/modes/
+ls ~/.claude/plugins/marketplaces/bjlee2024/plugin/modes/
 ```
 
 #### Available Modes
@@ -365,7 +365,7 @@ See the **[Troubleshooting Guide](https://docs.claude-mem.ai/troubleshooting)** 
 Create comprehensive bug reports with the automated generator:
 
 ```bash
-cd ~/.claude/plugins/marketplaces/thedotmack
+cd ~/.claude/plugins/marketplaces/bjlee2024
 npm run bug-report
 ```
 
@@ -402,11 +402,11 @@ open/commercial boundary.
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/thedotmack/claude-mem/issues)
-- **Repository**: [github.com/thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)
+- **Issues**: [GitHub Issues](https://github.com/bjlee2024/claude-mem/issues)
+- **Repository**: [github.com/bjlee2024/claude-mem](https://github.com/bjlee2024/claude-mem)
 - **Official X Account**: [@Claude_Memory](https://x.com/Claude_Memory)
 - **Official Discord**: [Join Discord](https://discord.com/invite/J4wttp9vDu)
-- **Author**: Alex Newman ([@thedotmack](https://github.com/thedotmack))
+- **Author**: Alex Newman ([@bjlee2024](https://github.com/bjlee2024))
 
 ---
 
@@ -416,4 +416,4 @@ open/commercial boundary.
 
 ### What About $CMEM?
 
-$CMEM is a solana token created by a 3rd party without Claude-Mem's prior consent, but officially embraced by the creator of Claude-Mem (Alex Newman, @thedotmack). The token acts as a community catalyst for growth and a vehicle for bringing real-time agent data to the developers and knowledge workers that need it most. $CMEM: 2TsmuYUrsctE57VLckZBYEEzdokUF8j8e1GavekWBAGS
+$CMEM is a solana token created by a 3rd party without Claude-Mem's prior consent, but officially embraced by the creator of Claude-Mem (Alex Newman, @bjlee2024). The token acts as a community catalyst for growth and a vehicle for bringing real-time agent data to the developers and knowledge workers that need it most. $CMEM: 2TsmuYUrsctE57VLckZBYEEzdokUF8j8e1GavekWBAGS

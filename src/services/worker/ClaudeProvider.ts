@@ -126,7 +126,7 @@ export function classifyClaudeError(err: unknown): ClassifiedProviderError {
         'SDK',
         'Anthropic API rejected request with HTTP 400: this model does not support the `effort` parameter. ' +
           'CLAUDE_CODE_EFFORT_LEVEL is likely leaking into the SDK subprocess env via ~/.claude-mem/.env — ' +
-          'remove it or scope it to models that support effort. See https://github.com/thedotmack/claude-mem/issues/2357.',
+          'remove it or scope it to models that support effort. See https://github.com/bjlee2024/claude-mem/issues/2357.',
         { status: 400 }
       );
     }

@@ -22,7 +22,7 @@ These facts came from a discovery agent + direct file reads. Each implementation
 |---|---|---|
 | NPX command dispatcher | `src/npx-cli/index.ts:39–141` | Manual `switch (command)` on `process.argv.slice(2)`. Each case dynamic-imports its handler. |
 | `install` case (template for `repair`) | `src/npx-cli/index.ts:46–52` | `const { runInstallCommand } = await import('./commands/install.js'); await runInstallCommand({ ide: ideValue });` |
-| Plugin cache dir helper | `src/npx-cli/utils/paths.ts:32–34` | `pluginCacheDirectory(version)` → `~/.claude/plugins/cache/thedotmack/claude-mem/{version}/` |
+| Plugin cache dir helper | `src/npx-cli/utils/paths.ts:32–34` | `pluginCacheDirectory(version)` → `~/.claude/plugins/cache/bjlee2024/claude-mem/{version}/` |
 | `.install-version` marker readers | `src/services/context/ContextBuilder.ts:36,45` and `src/services/worker/BranchManager.ts:173,228` | These read/delete the marker. Marker schema (`{ version, bun, uv, installedAt }`) MUST be preserved. |
 | `clack` task pattern | `src/npx-cli/commands/install.ts:604–664` | `runTasks([{ title, task: async (message) => { … return 'Done OK' } }])` |
 
@@ -166,7 +166,7 @@ Place this AFTER the "Installing dependencies" (npm install) task — same order
 case 'claude-code': {
   try {
     execSync(
-      'claude plugin marketplace add thedotmack/claude-mem && claude plugin install claude-mem',
+      'claude plugin marketplace add bjlee2024/claude-mem && claude plugin install claude-mem',
       { stdio: 'inherit' },
     );
     log.success('Claude Code: plugin installed via CLI.');
@@ -468,7 +468,7 @@ Must be green. Likely failures to anticipate:
 
 ### Edit 7C — Manual fresh-install verification
 
-1. On a clean machine (or after `rm -rf ~/.claude/plugins/marketplaces/thedotmack ~/.claude/plugins/cache/thedotmack ~/.claude-mem`):
+1. On a clean machine (or after `rm -rf ~/.claude/plugins/marketplaces/bjlee2024 ~/.claude/plugins/cache/bjlee2024 ~/.claude-mem`):
    ```bash
    npx claude-mem install
    ```
@@ -482,7 +482,7 @@ Must be green. Likely failures to anticipate:
    - No "claude plugin install" output
 3. Simulate a stale install:
    ```bash
-   rm ~/.claude/plugins/cache/thedotmack/claude-mem/<version>/.install-version
+   rm ~/.claude/plugins/cache/bjlee2024/claude-mem/<version>/.install-version
    ```
    Open a new Claude Code session. Confirm version-check.js prints the "run: npx claude-mem repair" message to stderr.
 4. Run repair:

@@ -5,8 +5,8 @@ const { existsSync, readFileSync } = require('fs');
 const path = require('path');
 const os = require('os');
 
-const INSTALLED_PATH = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces', 'thedotmack');
-const CACHE_BASE_PATH = path.join(os.homedir(), '.claude', 'plugins', 'cache', 'thedotmack', 'claude-mem');
+const INSTALLED_PATH = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces', 'bjlee2024');
+const CACHE_BASE_PATH = path.join(os.homedir(), '.claude', 'plugins', 'cache', 'bjlee2024', 'claude-mem');
 
 // Reject obviously invalid ports before they reach http.request, which would
 // throw with a confusing error like "RangeError: Port should be > 0 and < 65536".
@@ -125,7 +125,7 @@ if (installedMismatch) {
   console.log(`its cache dir. Mirroring this build into the installed-version cache so the`);
   console.log('worker restart picks up new code without a Claude Code session restart.');
   console.log('');
-  console.log('\x1b[36m%s\x1b[0m', `For a formal version bump, run \`claude plugin update thedotmack/claude-mem\``);
+  console.log('\x1b[36m%s\x1b[0m', `For a formal version bump, run \`claude plugin update bjlee2024/claude-mem\``);
   console.log('\x1b[36m%s\x1b[0m', `and restart Claude Code so it loads the ${getPluginVersion()} cache dir.`);
   console.log('');
 }
@@ -136,13 +136,13 @@ try {
   const gitignoreExcludes = getGitignoreExcludes(rootDir);
 
   execSync(
-    `rsync -av --delete --exclude=.git --exclude=bun.lock --exclude=package-lock.json --exclude=scripts/package.json --exclude=scripts/node_modules ${gitignoreExcludes} ./ ~/.claude/plugins/marketplaces/thedotmack/`,
+    `rsync -av --delete --exclude=.git --exclude=bun.lock --exclude=package-lock.json --exclude=scripts/package.json --exclude=scripts/node_modules ${gitignoreExcludes} ./ ~/.claude/plugins/marketplaces/bjlee2024/`,
     { stdio: 'inherit' }
   );
 
   console.log('Running bun install in marketplace...');
   execSync(
-    'cd ~/.claude/plugins/marketplaces/thedotmack/ && bun install',
+    'cd ~/.claude/plugins/marketplaces/bjlee2024/ && bun install',
     { stdio: 'inherit' }
   );
 

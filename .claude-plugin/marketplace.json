@@ -1,11 +1,11 @@
 {
-  "name": "thedotmack",
+  "name": "bjlee2024",
   "owner": {
     "name": "Alex Newman"
   },
   "metadata": {
-    "description": "Plugins by Alex Newman (thedotmack)",
-    "homepage": "https://github.com/thedotmack/claude-mem"
+    "description": "Plugins by Alex Newman (bjlee2024)",
+    "homepage": "https://github.com/bjlee2024/claude-mem"
   },
   "plugins": [
     {

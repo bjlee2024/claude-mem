@@ -194,7 +194,7 @@ export async function installWindsurfHooks(): Promise<number> {
   const workerServicePath = findWorkerServicePath();
   if (!workerServicePath) {
     console.error('Could not find worker-service.cjs');
-    console.error('   Expected at: ~/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs');
+    console.error('   Expected at: ~/.claude/plugins/marketplaces/bjlee2024/plugin/scripts/worker-service.cjs');
     return 1;
   }
 

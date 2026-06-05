@@ -10,7 +10,7 @@ NC='\033[0m'
 # Resolve SOURCE_DIR relative to this script so it works regardless of cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/../plugin/"
-DEST_DIR="$HOME/.claude/plugins/marketplaces/thedotmack/plugin/"
+DEST_DIR="$HOME/.claude/plugins/marketplaces/bjlee2024/plugin/"
 
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"

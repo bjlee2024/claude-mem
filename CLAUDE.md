@@ -12,7 +12,7 @@ npm run build-and-sync        # Build, sync to marketplace, restart worker
 
 - **Source**: `<project-root>/src/`
 - **Built Plugin**: `<project-root>/plugin/`
-- **Installed Plugin**: `~/.claude/plugins/marketplaces/thedotmack/`
+- **Installed Plugin**: `~/.claude/plugins/marketplaces/bjlee2024/`
 - **Database**: `~/.claude-mem/claude-mem.db`
 - **Chroma**: `~/.claude-mem/chroma/`
 

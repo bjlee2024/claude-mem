@@ -18,7 +18,7 @@
  *   1. ${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}   (host-injected env)
  *   2. (mcp only) $PWD/plugin, $PWD               (repo/dev checkout)
  *   3. cache directories (newest first via `ls -dt`)
- *   4. $_C/plugins/marketplaces/thedotmack/plugin (marketplace install)
+ *   4. $_C/plugins/marketplaces/bjlee2024/plugin (marketplace install)
  */
 
 export type ShellTemplateHost = 'claude-code' | 'claude-code-setup' | 'codex-cli' | 'mcp';
@@ -106,11 +106,11 @@ function candidateBlock(options: ShellTemplateOptions): string {
   }
 
   const extraCacheRoots = isMcp && options.mcpExtraCacheRoots ? options.mcpExtraCacheRoots : [];
-  const allGlobs = [...extraCacheRoots, '$_C/plugins/cache/thedotmack/claude-mem']
+  const allGlobs = [...extraCacheRoots, '$_C/plugins/cache/bjlee2024/claude-mem']
     .map((root) => `"${root}"/[0-9]*/`)
     .join(' ');
   lines.push(`ls -dt ${allGlobs} 2>/dev/null;`);
-  lines.push(`printf '%s\\n' "$_C/plugins/marketplaces/thedotmack/plugin";`);
+  lines.push(`printf '%s\\n' "$_C/plugins/marketplaces/bjlee2024/plugin";`);
 
   // The MCP loop trims a trailing slash inline; the hook loop trims via _R="${_R%/}".
   const trimAssignment = isMcp ? '' : ' _R="${_R%/}";';

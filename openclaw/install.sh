@@ -555,7 +555,7 @@ run_openclaw() {
   fi
 }
 
-CLAUDE_MEM_REPO="https://github.com/thedotmack/claude-mem.git"
+CLAUDE_MEM_REPO="https://github.com/bjlee2024/claude-mem.git"
 CLAUDE_MEM_BRANCH="${CLI_BRANCH:-main}"
 PLUGIN_FRESHLY_INSTALLED=""
 
@@ -1055,7 +1055,7 @@ find_claude_mem_install_dir() {
   local -a search_paths=(
     "$resolved_dir"
     "${HOME}/.openclaw/extensions/claude-mem"
-    "${HOME}/.claude/plugins/marketplaces/thedotmack"
+    "${HOME}/.claude/plugins/marketplaces/bjlee2024"
     "${HOME}/.openclaw/plugins/claude-mem"
   )
 
@@ -1100,7 +1100,7 @@ start_worker() {
     error "Cannot find claude-mem plugin installation directory"
     error "Expected worker-service.cjs in one of:"
     error "  ~/.openclaw/extensions/claude-mem/plugin/scripts/"
-    error "  ~/.claude/plugins/marketplaces/thedotmack/plugin/scripts/"
+    error "  ~/.claude/plugins/marketplaces/bjlee2024/plugin/scripts/"
     error ""
     error "Try reinstalling the plugin and re-running this installer."
     return 1

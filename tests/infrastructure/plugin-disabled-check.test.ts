@@ -35,7 +35,7 @@ describe('isPluginDisabledInClaudeSettings (#781)', () => {
   it('should return false when plugin is explicitly enabled', () => {
     const settings = {
       enabledPlugins: {
-        'claude-mem@thedotmack': true
+        'claude-mem@bjlee2024': true
       }
     };
     writeFileSync(join(tempDir, 'settings.json'), JSON.stringify(settings));
@@ -45,7 +45,7 @@ describe('isPluginDisabledInClaudeSettings (#781)', () => {
   it('should return true when plugin is explicitly disabled', () => {
     const settings = {
       enabledPlugins: {
-        'claude-mem@thedotmack': false
+        'claude-mem@bjlee2024': false
       }
     };
     writeFileSync(join(tempDir, 'settings.json'), JSON.stringify(settings));
