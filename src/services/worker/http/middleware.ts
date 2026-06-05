@@ -63,6 +63,13 @@ function isAllowedCorsOrigin(origin: string): boolean {
   try { host = new URL(origin).hostname; } catch { return false; }
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
 
+  // Single-label intranet hostnames (no dot — only resolvable on a local/MagicDNS
+  // network, e.g. a Tailscale machine name like "omarchy-bj2") and common local /
+  // Tailscale MagicDNS suffixes are trusted.
+  if (!host.includes('.')) return true;
+  if (host.endsWith('.local') || host.endsWith('.internal') ||
+      host.endsWith('.lan') || host.endsWith('.ts.net')) return true;
+
   const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if (m) {
     const a = Number(m[1]);
