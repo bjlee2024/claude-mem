@@ -512,6 +512,27 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') {
+        try {
+          const ctx = requireServerBetaForObservationTool('search');
+          if (typeof args?.query !== 'string' || args.query.trim().length === 0) {
+            throw new Error('search: "query" is required');
+          }
+          // legacy arg is `project` (a NAME); resolve name->uuid, else fall back to cwd-resolved project
+          let projectId: string;
+          if (typeof args.project === 'string' && args.project.trim().length > 0) {
+            projectId = await ctx.client.resolveProject(args.project.trim());
+          } else {
+            projectId = await effectiveProjectId(ctx, undefined);
+          }
+          const limit = typeof args.limit === 'number' ? args.limit : undefined;
+          const response = await ctx.client.searchObservations({ projectId, query: args.query, ...(limit !== undefined ? { limit } : {}) });
+          return formatJsonResult(response);
+        } catch (error) {
+          return formatToolError(error);
+        }
+      }
+      // worker mode unchanged:
       const endpoint = TOOL_ENDPOINT_MAP['search'];
       return await callWorkerAPI(endpoint, args);
     }
@@ -531,6 +552,11 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') {
+        return {
+          content: [{ type: 'text' as const, text: 'In server-beta/client mode this worker-only tool is unavailable. Use `search` (or `observation_search`) — in this mode it returns the full observation content directly, so the timeline/fetch follow-up steps are not needed.' }],
+        };
+      }
       const endpoint = TOOL_ENDPOINT_MAP['timeline'];
       return await callWorkerAPI(endpoint, args);
     }
@@ -551,6 +577,11 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') {
+        return {
+          content: [{ type: 'text' as const, text: 'In server-beta/client mode this worker-only tool is unavailable. Use `search` (or `observation_search`) — in this mode it returns the full observation content directly, so the timeline/fetch follow-up steps are not needed.' }],
+        };
+      }
       return await callWorkerAPIPost('/api/observations/batch', args);
     }
   },

@@ -17,6 +17,8 @@ Use when users ask about PREVIOUS sessions (not current conversation):
 
 ## 3-Layer Workflow (ALWAYS Follow)
 
+**Server/client mode:** when claude-mem runs against a remote server (`CLAUDE_MEM_RUNTIME=server-beta` or `client`), `search` returns full observation content in a single call — the `timeline` and `get_observations` follow-up steps are worker-mode only and are not needed.
+
 **NEVER fetch full details without filtering first. 10x token savings.**
 
 ### Step 1: Search - Get Index with IDs
