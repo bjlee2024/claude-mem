@@ -10,9 +10,14 @@
 // running in server-beta mode can reach the runtime even when no worker
 // is installed.
 
+import { join } from 'node:path';
 import { loadFromFileOnce } from '../../shared/hook-settings.js';
 import { logger } from '../../utils/logger.js';
 import { ServerBetaClient, type ServerBetaClientConfig } from './server-beta-client.js';
+import { DATA_DIR } from '../../shared/paths.js';
+import { ProjectResolver } from './project-resolver.js';
+import { Spool } from './spool.js';
+import { ClientWriter } from './client-write.js';
 
 export type SelectedRuntime = 'worker' | 'server-beta' | 'client';
 
@@ -108,6 +113,25 @@ export function resolveRuntimeContext(): RuntimeContext {
     return buildClientRuntimeContext() ?? { runtime: 'worker' };
   }
   return { runtime: 'worker' };
+}
+
+export interface ClientContext {
+  client: ServerBetaClient;
+  resolver: ProjectResolver;
+  spool: Spool;
+  writer: ClientWriter;
+  fixedProjectId: string | null;
+}
+
+// Client/server split — assemble the per-hook thin-client wiring from a remote
+// runtime context. Accepts both 'client' and 'server-beta' contexts (the latter
+// reuses this path as a single fixed-project pool).
+export function buildClientContext(ctx: ServerBetaRuntimeContext | ClientRuntimeContext): ClientContext {
+  const resolver = new ProjectResolver({ client: ctx.client, mapPath: join(DATA_DIR, 'project-map.json') });
+  const spool = new Spool({ path: join(DATA_DIR, 'spool', 'pending.ndjson') });
+  const fixedProjectId = ctx.projectId ?? null;
+  const writer = new ClientWriter({ client: ctx.client, resolver, spool, fixedProjectId });
+  return { client: ctx.client, resolver, spool, writer, fixedProjectId };
 }
 
 export function logServerBetaFallback(reason: string, details?: Record<string, unknown>): void {
