@@ -52,15 +52,20 @@ export async function createEnrollment(
     scopes: [...ENROLL_API_KEY_SCOPES],
   });
 
-  await repo.createAuditLog({
-    teamId: input.teamId,
-    actorId: ENROLL_ACTOR_ID,
-    apiKeyId: created.id,
-    action: 'api_key.create',
-    resourceType: 'api_key',
-    resourceId: created.id,
-    details: { source: 'server-enroll', label: input.label ?? null },
-  });
+  // Audit log is best-effort: a failure must NOT orphan the already-created key.
+  try {
+    await repo.createAuditLog({
+      teamId: input.teamId,
+      actorId: ENROLL_ACTOR_ID,
+      apiKeyId: created.id,
+      action: 'api_key.create',
+      resourceType: 'api_key',
+      resourceId: created.id,
+      details: { source: 'server-enroll', label: input.label ?? null },
+    });
+  } catch (auditErr) {
+    console.warn('[enroll] Warning: audit log failed (key was still created):', auditErr instanceof Error ? auditErr.message : String(auditErr));
+  }
 
   return {
     rawKey,

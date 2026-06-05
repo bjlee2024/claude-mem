@@ -26,8 +26,8 @@ describe('createEnrollment', () => {
     return;
   }
 
-  let pool: pg.Pool;
-  let client: PostgresPoolClient;
+  let pool: pg.Pool | undefined;
+  let client: PostgresPoolClient | undefined;
   let schemaName: string;
   let teamId: string;
 
@@ -45,17 +45,23 @@ describe('createEnrollment', () => {
   });
 
   afterEach(async () => {
-    try {
-      await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-    } finally {
-      client.release();
+    if (client) {
+      try {
+        await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      } finally {
+        client.release();
+      }
+    }
+    if (pool) {
       await pool.end();
     }
   });
 
   it('mints a team-scoped key (project_id NULL) with memories scopes and returns a decodable token', async () => {
+    // client is always set by beforeEach; the non-null assertion is safe here.
+    const c = client!;
     const result = await createEnrollment({
-      pool: client,
+      pool: c,
       teamId,
       serverUrl: 'https://host:37700',
       label: 'laptop',
@@ -67,7 +73,7 @@ describe('createEnrollment', () => {
     expect(result.apiKeyId.length).toBeGreaterThan(0);
 
     // Newest api_keys row must be team-scoped with the memories scopes.
-    const row = await client.query<{ project_id: string | null; scopes: unknown }>(
+    const row = await c.query<{ project_id: string | null; scopes: unknown }>(
       `SELECT project_id, scopes FROM api_keys ORDER BY created_at DESC LIMIT 1`,
     );
     expect(row.rows[0]).toBeDefined();

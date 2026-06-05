@@ -185,14 +185,25 @@ async function runServerEnrollCommand(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  // Optional --label <name>.
+  // Parse optional --label <name> and --url <serverUrl>.
   let label: string | undefined;
-  const labelIdx = args.indexOf('--label');
-  if (labelIdx !== -1) {
-    label = args[labelIdx + 1];
-    if (!label) {
-      console.error(pc.red('--label requires a value, e.g. --label laptop'));
-      process.exit(1);
+  let cliUrl: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--label' || arg === '--url') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        console.error(pc.red(`${arg} requires a value, e.g. ${arg === '--label' ? '--label laptop' : '--url https://my-server:37700'}`));
+        console.error('Usage: npx claude-mem server enroll [--url <url>] [--label <name>]');
+        process.exit(1);
+      }
+      if (arg === '--label') {
+        label = value;
+      } else {
+        cliUrl = value;
+      }
+      i++; // consume the value token
     }
   }
 
@@ -201,28 +212,29 @@ async function runServerEnrollCommand(args: string[]): Promise<void> {
   const { SettingsDefaultsManager } = await import('../../shared/SettingsDefaultsManager.js');
   const { createEnrollment } = await import('./server-enroll.js');
   const { join } = await import('path');
-  const { existsSync, readFileSync } = await import('fs');
 
-  const config = parsePostgresConfig({ requireDatabaseUrl: true });
-  if (!config) {
-    console.error(pc.red('Cannot enroll a device: CLAUDE_MEM_SERVER_DATABASE_URL is not set.'));
-    process.exit(1);
-  }
+  // parsePostgresConfig throws when requireDatabaseUrl is true and no URL is set,
+  // but the pre-check above already exited. The non-null assertion is safe.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const config = parsePostgresConfig({ requireDatabaseUrl: true })!;
 
-  // Prefer the operator-configured server URL from settings.json; fall back to
-  // the local default so a single-host install works out of the box.
-  let serverUrl = 'http://127.0.0.1:37700';
-  const settingsPath = join(SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR'), 'settings.json');
-  if (existsSync(settingsPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
-      const flat = (raw.env && typeof raw.env === 'object' ? raw.env : raw) as Record<string, unknown>;
-      const configuredUrl = flat.CLAUDE_MEM_SERVER_BETA_URL;
-      if (typeof configuredUrl === 'string' && configuredUrl.length > 0) {
-        serverUrl = configuredUrl;
-      }
-    } catch {
-      // ignore — fall back to the local default URL
+  // URL resolution precedence:
+  //   1. explicit --url <value> from the CLI
+  //   2. CLAUDE_MEM_SERVER_BETA_URL from settings.json (via loadFromFile, which also applies env overrides)
+  //   3. SettingsDefaultsManager.get() default (UID-derived localhost — env or compiled default)
+  let serverUrl: string;
+  if (cliUrl) {
+    serverUrl = cliUrl;
+  } else {
+    const settingsPath = join(SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR'), 'settings.json');
+    const loaded = SettingsDefaultsManager.loadFromFile(settingsPath);
+    serverUrl = loaded.CLAUDE_MEM_SERVER_BETA_URL || SettingsDefaultsManager.get('CLAUDE_MEM_SERVER_BETA_URL');
+    if (serverUrl.startsWith('http://127.') || serverUrl.startsWith('http://localhost')) {
+      console.warn(
+        `[enroll] Warning: falling back to localhost URL (${serverUrl}).` +
+        ' Remote devices will not be able to reach this server.' +
+        ' Pass --url <tailnet-or-public-url> for cross-device enrollment.',
+      );
     }
   }
 
@@ -255,6 +267,7 @@ async function ensureDefaultTeamId(pool: import('../../storage/postgres/pool.js'
     `SELECT id FROM teams ORDER BY created_at ASC LIMIT 1`,
   );
   if (any.rows[0]) {
+    console.warn(`[enroll] Warning: no 'local-hook-team' found; falling back to oldest team id=${any.rows[0].id}`);
     return any.rows[0].id;
   }
   const { PostgresTeamsRepository } = await import('../../storage/postgres/teams.js');
