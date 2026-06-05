@@ -13,9 +13,12 @@
 import type { Application, Request, Response } from 'express';
 import type { RouteHandler } from '../../services/server/Server.js';
 import type { PostgresQueryable } from '../../storage/postgres/utils.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { logger } from '../../utils/logger.js';
 import { renderContextFromObservations } from '../../services/context/ContextBuilder.js';
 import type { Observation } from '../../services/context/types.js';
+import { USER_SETTINGS_PATH } from '../../shared/paths.js';
 
 export interface ViewerObservation {
   id: string;
@@ -138,9 +141,41 @@ export class ServerViewerDataRoutes implements RouteHandler {
     app.get('/api/projects', (req, res) => this.handleProjects(req, res));
     app.get('/api/stats', (req, res) => this.handleStats(req, res));
     app.get('/api/processing-status', (req, res) => this.handleProcessingStatus(req, res));
-    app.get('/api/settings', (_req, res) => res.json({}));
+    app.get('/api/settings', (_req, res) => this.handleGetSettings(res));
+    app.post('/api/settings', (req, res) => this.handleSaveSettings(req, res));
     app.get('/api/context/preview', (req, res) => this.handleContextPreview(req, res));
     app.get('/stream', (req, res) => this.handleStream(req, res));
+  }
+
+  // Viewer settings are persisted to the server's DATA_DIR/settings.json, which
+  // loadContextConfig() reads — so saved context settings flow into the /api/context/
+  // preview. (Generation provider config remains env-only; the viewer hides that
+  // panel in server-beta.) Without a POST handler the viewer's Save 500'd.
+  private handleGetSettings(res: Response): void {
+    try {
+      const data = existsSync(USER_SETTINGS_PATH)
+        ? JSON.parse(readFileSync(USER_SETTINGS_PATH, 'utf8'))
+        : {};
+      res.json(data);
+    } catch {
+      res.json({});
+    }
+  }
+
+  private handleSaveSettings(req: Request, res: Response): void {
+    try {
+      const incoming = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+      const current = existsSync(USER_SETTINGS_PATH)
+        ? JSON.parse(readFileSync(USER_SETTINGS_PATH, 'utf8'))
+        : {};
+      const merged = { ...current, ...incoming };
+      mkdirSync(dirname(USER_SETTINGS_PATH), { recursive: true });
+      writeFileSync(USER_SETTINGS_PATH, JSON.stringify(merged, null, 2));
+      res.json({ ok: true });
+    } catch (err) {
+      logger.error('SYSTEM', 'viewer POST /api/settings failed', { error: String(err) });
+      res.status(500).json({ error: 'InternalError', message: 'Failed to save settings' });
+    }
   }
 
   // Settings-modal preview. The worker runtime renders this via generateContext()
