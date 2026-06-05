@@ -171,7 +171,8 @@ export class ServerViewerDataRoutes implements RouteHandler {
       const merged = { ...current, ...incoming };
       mkdirSync(dirname(USER_SETTINGS_PATH), { recursive: true });
       writeFileSync(USER_SETTINGS_PATH, JSON.stringify(merged, null, 2));
-      res.json({ ok: true });
+      // The viewer checks `result.success`, not HTTP status, to show "✓ Saved".
+      res.json({ success: true });
     } catch (err) {
       logger.error('SYSTEM', 'viewer POST /api/settings failed', { error: String(err) });
       res.status(500).json({ error: 'InternalError', message: 'Failed to save settings' });
