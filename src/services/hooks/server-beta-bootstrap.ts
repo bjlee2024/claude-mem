@@ -145,7 +145,13 @@ export function persistServerBetaSettings(
     : existing) as Record<string, unknown>;
 
   flat.CLAUDE_MEM_SERVER_BETA_API_KEY = values.apiKey;
-  flat.CLAUDE_MEM_SERVER_BETA_PROJECT_ID = values.projectId;
+  // Only persist a fixed project id when one is actually provided. Client-mode
+  // installs use a team-scoped key and resolve projects per-repo, so they pass
+  // an empty projectId — writing "" here would be a footgun for any server-beta
+  // reader that treats a present-but-empty value as a real (broken) project id.
+  if (values.projectId) {
+    flat.CLAUDE_MEM_SERVER_BETA_PROJECT_ID = values.projectId;
+  }
   if (values.serverBaseUrl) {
     flat.CLAUDE_MEM_SERVER_BETA_URL = values.serverBaseUrl;
   }
