@@ -12,6 +12,7 @@ const codexPluginPath = path.join(rootDir, '.codex-plugin', 'plugin.json');
 const bundledCodexPluginPath = path.join(rootDir, 'plugin', '.codex-plugin', 'plugin.json');
 const claudePluginPath = path.join(rootDir, '.claude-plugin', 'plugin.json');
 const bundledClaudePluginPath = path.join(rootDir, 'plugin', '.claude-plugin', 'plugin.json');
+const marketplacePath = path.join(rootDir, '.claude-plugin', 'marketplace.json');
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -46,10 +47,18 @@ function syncCodexPlugin(plugin, pkg) {
   };
 }
 
+// The Claude Code plugin id must match the marketplace.json plugin entry and the
+// installed_plugins key ("claude-mem"), NOT the scoped npm package name
+// ("@bjlee2024/claude-mem"). A mismatch makes Claude Code's "Update now" fail with
+// `Plugin "" not found`. Strip any npm scope.
+function pluginId(pkg) {
+  return pkg.name.includes('/') ? pkg.name.split('/').pop() : pkg.name;
+}
+
 function syncClaudePlugin(plugin, pkg) {
   return {
     ...plugin,
-    name: pkg.name,
+    name: pluginId(pkg),
     version: pkg.version,
     description: pkg.description,
     homepage: pkg.homepage,
@@ -60,6 +69,21 @@ function syncClaudePlugin(plugin, pkg) {
       ...(typeof plugin.author === 'object' && plugin.author ? plugin.author : {}),
       name: normalizeAuthorName(pkg.author),
     },
+  };
+}
+
+// Keep the marketplace catalog entry in lock-step with package.json so Claude
+// Code sees a consistent plugin id + version (a stale version here made the UI
+// "Update now" offer a phantom downgrade).
+function syncMarketplace(marketplace, pkg) {
+  const id = pluginId(pkg);
+  return {
+    ...marketplace,
+    plugins: (marketplace.plugins || []).map((p) =>
+      p.name === id || p.source === './plugin'
+        ? { ...p, name: id, version: pkg.version, description: pkg.description }
+        : p,
+    ),
   };
 }
 
@@ -77,7 +101,7 @@ function normalizeRepositoryUrl(repository) {
 }
 
 function main() {
-  for (const filePath of [packageJsonPath, codexPluginPath, bundledCodexPluginPath, claudePluginPath, bundledClaudePluginPath]) {
+  for (const filePath of [packageJsonPath, codexPluginPath, bundledCodexPluginPath, claudePluginPath, bundledClaudePluginPath, marketplacePath]) {
     if (!fs.existsSync(filePath)) {
       console.error(`Missing required file: ${filePath}`);
       process.exit(1);
@@ -94,6 +118,7 @@ function main() {
   writeJson(bundledCodexPluginPath, syncCodexPlugin(bundledCodexPlugin, pkg));
   writeJson(claudePluginPath, syncClaudePlugin(claudePlugin, pkg));
   writeJson(bundledClaudePluginPath, syncClaudePlugin(bundledClaudePlugin, pkg));
+  writeJson(marketplacePath, syncMarketplace(readJson(marketplacePath), pkg));
 
   console.log('✓ Synced plugin manifests from package.json');
 }
