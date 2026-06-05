@@ -98,6 +98,35 @@ function buildContextOutput(
   return output.join('\n').trimEnd();
 }
 
+/**
+ * Pure renderer — takes already-fetched observations (no DB access) and
+ * returns the same formatted output that generateContext() produces for the
+ * worker path. Used by the client-mode context handler so both paths share
+ * identical formatting.
+ *
+ * @param project   Repo/project name shown in the header.
+ * @param observations  Observations already mapped to the canonical shape.
+ * @param cwd       Working directory (used for relative-path rendering).
+ * @param forHuman  true → terminal-friendly with ANSI colours; false → agent text.
+ */
+export function renderContextFromObservations(
+  project: string,
+  observations: Observation[],
+  cwd: string,
+  forHuman: boolean,
+): string {
+  if (observations.length === 0) return '';
+  return buildContextOutput(
+    project,
+    observations,
+    [],              // summaries — not available in client mode
+    loadContextConfig(),
+    cwd,
+    undefined,       // sessionId — not available in client mode
+    forHuman,
+  );
+}
+
 export async function generateContext(
   input?: ContextInput,
   forHuman: boolean = false

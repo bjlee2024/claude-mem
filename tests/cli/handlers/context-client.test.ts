@@ -18,6 +18,31 @@ const realRuntimeSelectorSnapshot = { ...realRuntimeSelector };
 const realSpoolFlushSnapshot = { ...realSpoolFlush };
 const realOauthTokenSnapshot = { ...realOauthToken };
 
+// ModeManager must be mocked before ContextBuilder is imported (via context.ts),
+// because loadContextConfig() calls ModeManager.getInstance().getActiveMode() and
+// throws if no mode is loaded.
+mock.module('../../../src/services/domain/ModeManager.js', () => ({
+  ModeManager: {
+    getInstance: () => ({
+      getActiveMode: () => ({
+        name: 'code',
+        prompts: {},
+        observation_types: [
+          { id: 'observation', emoji: 'O' },
+          { id: 'decision', emoji: 'D' },
+          { id: 'bugfix', emoji: 'B' },
+        ],
+        observation_concepts: [{ id: 'general', emoji: 'G' }],
+      }),
+      getTypeIcon: (type: string) => {
+        const icons: Record<string, string> = { observation: 'O', decision: 'D', bugfix: 'B' };
+        return icons[type] || '?';
+      },
+      getWorkEmoji: () => 'W',
+    }),
+  },
+}));
+
 mock.module('../../../src/shared/SettingsDefaultsManager.js', () => ({
   SettingsDefaultsManager: {
     get: (key: string) => {
@@ -25,7 +50,20 @@ mock.module('../../../src/shared/SettingsDefaultsManager.js', () => ({
       return '';
     },
     getInt: () => 0,
-    loadFromFile: () => ({}),
+    loadFromFile: () => ({
+      CLAUDE_MEM_CONTEXT_OBSERVATIONS: '50',
+      CLAUDE_MEM_CONTEXT_FULL_COUNT: '0',
+      CLAUDE_MEM_CONTEXT_SESSION_COUNT: '10',
+      CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS: 'false',
+      CLAUDE_MEM_CONTEXT_SHOW_WORK_TOKENS: 'false',
+      CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_AMOUNT: 'false',
+      CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_PERCENT: 'false',
+      CLAUDE_MEM_CONTEXT_FULL_FIELD: 'narrative',
+      CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY: 'false',
+      CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE: 'false',
+      CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT: 'false',
+      CLAUDE_MEM_MODE: 'code',
+    }),
   },
 }));
 
@@ -163,7 +201,56 @@ function sessionStartInput() {
 }
 
 describe('contextHandler — client runtime branch', () => {
-  it('injects remote context string', async () => {
+  it('renders formatted context from observations (not raw context string)', async () => {
+    // Provide a real observation so the renderer produces structured output.
+    contextObservationsImpl = async () => ({
+      observations: [
+        {
+          id: 'mig-obs-153',
+          projectId: 'proj-id',
+          teamId: 'team-1',
+          serverSessionId: 'sess-abc',
+          kind: 'observation',
+          content: 'remembered: X',
+          metadata: {
+            type: 'observation',
+            title: 'Test Observation',
+            subtitle: 'a subtitle',
+            narrative: 'remembered: X',
+            facts: null,
+            concepts: null,
+            created_at: '2025-01-15T10:00:00.000Z',
+          },
+        },
+      ],
+      context: 'remembered: X',
+    });
+
+    const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+
+    const result = await contextHandler.execute(sessionStartInput());
+
+    // additionalContext must be the FORMATTED output, not the raw context string.
+    expect(result.hookSpecificOutput).toBeDefined();
+    const additionalContext = (result.hookSpecificOutput as { hookEventName: string; additionalContext: string }).additionalContext;
+    // Must contain formatted title, not the raw "remembered: X" context dump.
+    expect(additionalContext).toContain('Test Observation');
+    // Must NOT contain raw claude-mem:// markers.
+    expect(additionalContext).not.toContain('claude-mem://');
+    // Must not be the literal context string.
+    expect(additionalContext).not.toBe('remembered: X');
+
+    // spool was flushed exactly once (best-effort)
+    expect(flushCalls.length).toBe(1);
+
+    // worker path was never taken
+    expect(workerCallLog.length).toBe(0);
+
+    // exit code is SUCCESS
+    expect(result.exitCode).toBe(HOOK_EXIT_CODES.SUCCESS);
+  });
+
+  it('returns empty additionalContext when observations array is empty', async () => {
     contextObservationsImpl = async () => ({
       observations: [],
       context: 'remembered: X',
@@ -173,9 +260,10 @@ describe('contextHandler — client runtime branch', () => {
 
     const result = await contextHandler.execute(sessionStartInput());
 
-    // additionalContext comes from the server response
     expect(result.hookSpecificOutput).toBeDefined();
-    expect((result.hookSpecificOutput as { hookEventName: string; additionalContext: string }).additionalContext).toBe('remembered: X');
+    const additionalContext = (result.hookSpecificOutput as { hookEventName: string; additionalContext: string }).additionalContext;
+    // Empty observations → renderer returns '' → additionalContext is ''.
+    expect(additionalContext).toBe('');
 
     // spool was flushed exactly once (best-effort)
     expect(flushCalls.length).toBe(1);
