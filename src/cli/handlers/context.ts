@@ -15,10 +15,33 @@ import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { logger } from '../../utils/logger.js';
 import { loadFromFileOnce } from '../../shared/hook-settings.js';
 import { readStaleMarker } from '../../shared/oauth-token.js';
+import { resolveRuntimeContext, buildClientContext } from '../../services/hooks/runtime-selector.js';
+import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 
 export const contextHandler: EventHandler = {
   async execute(input: NormalizedHookInput): Promise<HookResult> {
     const cwd = input.cwd ?? process.cwd();
+
+    const runtime = resolveRuntimeContext();
+    if (runtime.runtime === 'client') {
+      const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
+      try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      const emptyResult: HookResult = {
+        hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: '' },
+        exitCode: HOOK_EXIT_CODES.SUCCESS,
+      };
+      try {
+        const projectId = fixedProjectId ?? await resolver.resolve(cwd);
+        const ctx = await client.contextObservations({ projectId, query: '', limit: 10 });
+        return {
+          hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: (ctx.context ?? '').trim() },
+          exitCode: HOOK_EXIT_CODES.SUCCESS,
+        };
+      } catch {
+        return emptyResult;
+      }
+    }
+
     const context = getProjectContext(cwd);
     const port = getWorkerPort();
 
