@@ -5,6 +5,8 @@ import { unlinkSync } from 'fs';
 import { SessionStore } from '../sqlite/SessionStore.js';
 import { logger } from '../../utils/logger.js';
 import { getProjectContext } from '../../utils/project-name.js';
+import { ModeManager } from '../domain/ModeManager.js';
+import { loadFromFileOnce } from '../../shared/hook-settings.js';
 
 import type { ContextInput, ContextConfig, Observation, SessionSummary } from './types.js';
 import { loadContextConfig } from './ContextConfigLoader.js';
@@ -116,6 +118,14 @@ export function renderContextFromObservations(
   forHuman: boolean,
 ): string {
   if (observations.length === 0) return '';
+  // The worker loads the active mode at startup; the client hook path does not,
+  // so loadContextConfig() → ModeManager.getActiveMode() throws "No mode loaded".
+  // Load it on demand (idempotent — only when no mode is active yet).
+  try {
+    ModeManager.getInstance().getActiveMode();
+  } catch {
+    ModeManager.getInstance().loadMode(loadFromFileOnce().CLAUDE_MEM_MODE || 'code');
+  }
   return buildContextOutput(
     project,
     observations,
