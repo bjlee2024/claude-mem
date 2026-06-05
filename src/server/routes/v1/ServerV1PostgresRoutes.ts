@@ -912,10 +912,14 @@ export class ServerV1PostgresRoutes implements RouteHandler {
     // a concatenated context string for direct prompt injection. The MCP
     // `observation_context` tool calls this so MCP and any future REST
     // consumer share the exact same context-packing rule.
+    //
+    // When `query` is absent or empty (e.g. session-start with no search term)
+    // the handler falls back to recent-mode: the most recent `limit` observations
+    // ordered by created_at DESC. The response shape is identical in both modes.
     app.post('/v1/context', readAuth, this.handleCreate(
       z.object({
         projectId: z.string().min(1),
-        query: z.string().min(1),
+        query: z.string().optional(),
         limit: z.number().int().positive().max(50).optional(),
       }),
       async (req, res, body) => {
@@ -924,20 +928,29 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         if (!this.ensureProjectAllowed(req, res, body.projectId)) return;
         try {
           const repo = new PostgresObservationRepository(this.options.pool);
-          const results = await repo.search({
-            projectId: body.projectId,
-            teamId,
-            query: body.query,
-            limit: body.limit ?? 10,
-          });
+          const effectiveLimit = body.limit ?? 10;
+          const trimmedQuery = body.query?.trim() ?? '';
+          const isSearchMode = trimmedQuery.length > 0;
+          const results = isSearchMode
+            ? await repo.search({
+                projectId: body.projectId,
+                teamId,
+                query: trimmedQuery,
+                limit: effectiveLimit,
+              })
+            : await repo.listRecent({
+                projectId: body.projectId,
+                teamId,
+                limit: effectiveLimit,
+              });
           const context = results
             .map(observation => observation.content)
             .filter(text => typeof text === 'string' && text.length > 0)
             .join('\n\n');
           await this.auditRead(req, 'observation.read', null, body.projectId, {
-            mode: 'context',
-            query: body.query,
-            limit: body.limit ?? 10,
+            mode: isSearchMode ? 'context' : 'context-recent',
+            query: trimmedQuery || null,
+            limit: effectiveLimit,
             resultCount: results.length,
             observationIds: results.map(o => o.id),
           });

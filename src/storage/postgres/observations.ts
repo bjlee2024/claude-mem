@@ -169,6 +169,24 @@ export class PostgresObservationRepository {
     );
     return result.rows.map(mapObservationRow);
   }
+
+  async listRecent(input: {
+    projectId: string;
+    teamId: string;
+    limit?: number;
+  }): Promise<PostgresObservation[]> {
+    const result = await this.client.query<ObservationRow>(
+      `
+        SELECT * FROM observations
+        WHERE project_id = $1
+          AND team_id = $2
+        ORDER BY created_at DESC
+        LIMIT $3
+      `,
+      [input.projectId, input.teamId, input.limit ?? 10]
+    );
+    return result.rows.map(mapObservationRow);
+  }
 }
 
 export class PostgresObservationSourcesRepository {
