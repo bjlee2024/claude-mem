@@ -1,0 +1,194 @@
+---
+title: "Server & Client Modes"
+description: "Run claude-mem as a shared server and connect thin clients that store and recall memory remotely"
+---
+
+# Server & Client Modes
+
+Claude-Mem can be split across machines: one **server** holds all memory in Postgres,
+and any number of thin **clients** send their observations to it and recall context
+from it. This is built for a personal multi-device setup — your laptop, desktop, and
+the server box itself all share one memory pool over a trusted network (e.g. Tailscale).
+
+<Note>
+These modes require the **server-beta** runtime (Postgres + Valkey + Docker), not the
+default local SQLite worker. Generation runs on the server, so **clients never need a
+provider API key.**
+</Note>
+
+## When to use it
+
+| You want… | Use |
+| --- | --- |
+| Memory on one machine only | Default install (local worker) |
+| One backend, several devices sharing memory | **Server** on one box, **client** on each device |
+| The server box to also capture its own Claude Code work | Server with `--with-local-client` (default) |
+
+## How it works
+
+```
+[laptop]   claude-mem (client) ─┐
+[desktop]  claude-mem (client) ─┼─ Tailscale/HTTP → [server] claude-mem (server)
+[server]   (local client)      ─┘                     Postgres + Valkey + worker (generation)
+```
+
+- **Writes** — each hook posts the tool use to the server's `/v1/events`. If the
+  server is unreachable, the event is queued to a local **spool**
+  (`~/.claude-mem/spool/pending.ndjson`) and re-sent on the next hook. No memory is lost
+  while the server is down.
+- **Reads** — at session start the client pulls recent memory from the server's
+  `/v1/context` and injects it. Offline, context injection is simply skipped (never
+  blocks your session).
+- **Per-repo isolation** — the client maps each repository to its own server project by
+  name (the same isolation local mode gives you), so memory from one repo doesn't bleed
+  into another. The mapping is cached in `~/.claude-mem/project-map.json`.
+- **Generation** — the client sends raw events; the server's worker compresses and
+  summarizes them. The client has no model, no SQLite, no Chroma.
+
+## 1. Set up the server
+
+On the machine that will hold memory:
+
+```bash
+npx claude-mem install --mode server
+```
+
+This brings up the server-beta Docker stack (Postgres, Valkey, server, worker), applies
+the schema, and configures this box as a local client too. To run a pure backend with no
+local capture, pass `--no-local-client`.
+
+<Note>
+The stack's compose file requires Postgres credentials and the server-beta env vars. See
+the [Beta Features](/beta-features) and deployment notes for the `docker-compose` setup,
+and keep the server reachable only over a trusted network.
+</Note>
+
+### Keep it always-on (systemd)
+
+Register the stack as a service so it survives reboots:
+
+```ini
+# /etc/systemd/system/claude-mem.service
+[Unit]
+Description=claude-mem server-beta stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/path/to/claude-mem
+ExecStart=/usr/bin/docker compose -p claude-mem -f docker-compose.my.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -p claude-mem -f docker-compose.my.yml stop
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable docker.service
+sudo systemctl enable --now claude-mem.service
+```
+
+## 2. Enroll a device
+
+Generate a one-line enrollment token on the server. **Use the address your other devices
+can actually reach** — a tailnet IP, not `localhost`:
+
+```bash
+npx claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
+```
+
+It prints:
+
+```
+Enroll a device with:
+  npx claude-mem install --mode client --enroll eyJ1cmwiOiJodHRw...
+```
+
+The token bundles the server URL and a **team-scoped API key** (read + write, no fixed
+project — the client resolves projects per repo). Treat it like a password: it's printed
+once, paste it over a trusted channel.
+
+<Note>
+`server enroll` is part of the host CLI and needs database access. Run it where
+`CLAUDE_MEM_SERVER_DATABASE_URL` points at the server's Postgres (typically on the server
+host). If Postgres isn't published to the host, target the container's address.
+</Note>
+
+## 3. Install the client
+
+On each device:
+
+```bash
+npx claude-mem install --mode client --enroll <token>
+```
+
+Or without a token:
+
+```bash
+npx claude-mem install --mode client --server-url http://100.x.y.z:37700 --token <api-key>
+```
+
+The client install:
+
+- Writes `CLAUDE_MEM_RUNTIME=client` plus the server URL and key (to `~/.claude-mem`, mode `0600`).
+- Installs the IDE hooks.
+- **Skips** the local worker, SQLite, Chroma, and the provider-key prompt.
+- Runs a best-effort reachability check (a warning, not a failure — you can install an
+  offline laptop and it will sync later).
+
+That's it — open Claude Code and work normally. Observations flow to the server; past
+memory is injected at session start.
+
+## 4. Verify
+
+```bash
+npx claude-mem client status
+```
+
+```json
+{
+  "runtime": "client",
+  "server": "http://100.x.y.z:37700",
+  "reachable": true,
+  "spoolDepth": 0
+}
+```
+
+- `reachable: true` — the server answered `/v1/info`.
+- `spoolDepth` — how many writes are queued offline (0 means everything is synced).
+
+## Offline behavior
+
+If the server is down or the network drops:
+
+1. Your Claude Code session is **never blocked** — hooks fail silently into the spool.
+2. Observations accumulate in `~/.claude-mem/spool/pending.ndjson` (`client status` shows
+   a rising `spoolDepth`).
+3. When the server comes back, the next hook **flushes the spool** and re-sends everything.
+   Replays are idempotent — duplicate sends are de-duplicated server-side, so nothing is
+   doubled.
+
+Context injection (recall) is skipped while offline, since reads come from the server.
+
+## Notes & limits
+
+- **One trusted network.** These modes assume a single owner on a trusted tailnet. The
+  server uses API-key auth; keep it off the public internet.
+- **No provider key on clients.** Generation is the server's job — only the server's worker
+  needs `ANTHROPIC_API_KEY` (or another provider). Without it the server still ingests
+  events but won't produce summaries.
+- **Switching modes** is done by re-installing with a different `--mode`.
+- **Revoking a device** — revoke its API key on the server (`server api-key revoke`) and the
+  client can no longer write.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `client status` shows `reachable: false` | Server up? URL is the tailnet address, not `localhost`? Firewall/Tailscale ACL allows the port? |
+| `spoolDepth` keeps rising | Server unreachable or key revoked. Fix connectivity; the spool flushes automatically. |
+| No memory injected at session start | Server has observations for this repo? Generation needs a provider key on the worker. |
+| Remote device can't reach an enrolled server | The enrollment `--url` must be reachable from that device (tailnet IP, not `127.0.0.1`). Re-enroll with the correct URL. |
