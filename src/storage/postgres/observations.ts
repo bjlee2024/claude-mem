@@ -175,17 +175,13 @@ export class PostgresObservationRepository {
     teamId: string;
     limit?: number;
   }): Promise<PostgresObservation[]> {
-    const result = await this.client.query<ObservationRow>(
-      `
-        SELECT * FROM observations
-        WHERE project_id = $1
-          AND team_id = $2
-        ORDER BY created_at DESC
-        LIMIT $3
-      `,
-      [input.projectId, input.teamId, input.limit ?? 10]
-    );
-    return result.rows.map(mapObservationRow);
+    // Delegates to listByProject with no session filter — equivalent to ORDER BY created_at DESC LIMIT n across the project.
+    return this.listByProject({
+      projectId: input.projectId,
+      teamId: input.teamId,
+      serverSessionId: null,
+      limit: input.limit ?? 10,
+    });
   }
 }
 

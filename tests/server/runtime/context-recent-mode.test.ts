@@ -50,6 +50,22 @@ describe('/v1/context recent-mode', () => {
       limit: 10,
     });
     expect(res.status).toBe(200);
+    const body = await res.json() as { observations: Array<{ content: string; createdAtEpoch: number }>; context: string };
+    expect(Array.isArray(body.observations)).toBe(true);
+    expect(body.observations.length).toBeGreaterThanOrEqual(1);
+    expect(typeof body.context).toBe('string');
+    expect(body.context.length).toBeGreaterThan(0);
+    // Newest seed (i=1, created 1 s later) must appear first — verifies ORDER BY created_at DESC.
+    expect(body.observations[0].content).toContain('content 1');
+  });
+
+  it('returns recent observations when query is whitespace-only (session-start mode)', async () => {
+    const res = await ctx.authedPost('/v1/context', {
+      projectId: ctx.projectId,
+      query: '   ',
+      limit: 10,
+    });
+    expect(res.status).toBe(200);
     const body = await res.json() as { observations: unknown[]; context: string };
     expect(Array.isArray(body.observations)).toBe(true);
     expect(body.observations.length).toBeGreaterThanOrEqual(1);
