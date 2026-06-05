@@ -92,6 +92,9 @@ export interface ServerBetaRecordEventRequest {
   // When false, the event is recorded but no generation job is enqueued.
   // Maps to the REST endpoint's `?generate=false` query flag.
   generate?: boolean;
+  // Client/server split — idempotency key; reused as the spool record id so
+  // the server's agent_events.idempotency_key absorbs replays.
+  sourceEventId?: string | null;
 }
 
 export interface ServerBetaRecordEventResponse {
@@ -342,6 +345,7 @@ export class ServerBetaClient {
       ...(input.contentSessionId !== undefined ? { contentSessionId: input.contentSessionId } : {}),
       ...(input.memorySessionId !== undefined ? { memorySessionId: input.memorySessionId } : {}),
       ...(input.payload !== undefined ? { payload: input.payload } : {}),
+      ...(input.sourceEventId !== undefined ? { sourceEventId: input.sourceEventId } : {}),
     };
   }
 
