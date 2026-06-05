@@ -57,6 +57,7 @@ ${pc.bold('Runtime Commands')} (requires Bun, delegates to installed plugin):
   ${pc.cyan('npx claude-mem adopt [--dry-run] [--branch <name>]')}    Stamp merged worktrees into parent project
   ${pc.cyan('npx claude-mem cleanup [--dry-run]')}    Run one-time v12.4.3 pollution cleanup (or preview counts)
   ${pc.cyan('npx claude-mem transcript watch')}     Start transcript watcher
+  ${pc.cyan('npx claude-mem client status')}        Show thin-client runtime, server URL, reachability, and offline spool depth
 
 ${pc.bold('IDE Identifiers')}:
   claude-code, cursor, gemini-cli, opencode, openclaw,
@@ -185,6 +186,12 @@ async function main(): Promise<void> {
     case 'doctor': {
       const { runDoctorCommand } = await import('./commands/doctor.js');
       await runDoctorCommand();
+      break;
+    }
+
+    case 'client': {
+      const { runClientCommand } = await import('./commands/client.js');
+      await runClientCommand(args.slice(1));
       break;
     }
 
