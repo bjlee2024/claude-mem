@@ -23,7 +23,7 @@ export function App() {
 
   const { observations, summaries, prompts, projects, isProcessing, queueDepth, isConnected } = useSSE();
   const { settings, saveSettings, isSaving, saveStatus } = useSettings();
-  const { refreshStats } = useStats();
+  const { stats, refreshStats } = useStats();
   const { preference, setThemePreference } = useTheme();
   const pagination = usePagination(currentFilter);
 
@@ -136,6 +136,7 @@ export function App() {
         onSave={saveSettings}
         isSaving={isSaving}
         saveStatus={saveStatus}
+        runtime={stats.runtime}
       />
 
       <button

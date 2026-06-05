@@ -111,4 +111,5 @@ export interface DatabaseStats {
 export interface Stats {
   worker?: WorkerStats;
   database?: DatabaseStats;
+  runtime?: string;
 }

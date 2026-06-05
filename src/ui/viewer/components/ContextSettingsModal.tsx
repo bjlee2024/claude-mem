@@ -10,6 +10,7 @@ interface ContextSettingsModalProps {
   onSave: (settings: Settings) => void;
   isSaving: boolean;
   saveStatus: string;
+  runtime?: string;
 }
 
 function CollapsibleSection({
@@ -123,7 +124,8 @@ export function ContextSettingsModal({
   settings,
   onSave,
   isSaving,
-  saveStatus
+  saveStatus,
+  runtime
 }: ContextSettingsModalProps) {
   const [formState, setFormState] = useState<Settings>(settings);
 
@@ -323,7 +325,10 @@ export function ContextSettingsModal({
               </div>
             </CollapsibleSection>
 
-            {/* Section 4: Advanced */}
+            {/* Section 4: Advanced — provider/worker config is environment-only in
+                server-beta (set via .env on the worker container), and these settings
+                can't be persisted there (read-only viewer), so hide the whole section. */}
+            {runtime !== 'server-beta' && (
             <CollapsibleSection
               title="Advanced"
               description="AI provider and model selection"
@@ -476,6 +481,7 @@ export function ContextSettingsModal({
                 />
               </div>
             </CollapsibleSection>
+            )}
           </div>
         </div>
 
