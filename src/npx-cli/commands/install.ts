@@ -17,6 +17,7 @@ import {
 } from '../install/setup-runtime.js';
 import { playBanner } from '../banner.js';
 import { normalizeRuntimeFlag, planServerRuntimeInstall } from './server-runtime-setup.js';
+import { decodeEnrollment } from '../../services/hooks/enrollment.js';
 import { ErrorSeverity } from '../install/error-taxonomy.js';
 import {
   createInstallSummary,
@@ -1126,6 +1127,71 @@ async function promptClaudeModel(options: InstallOptions): Promise<void> {
   if (wrote) {
     log.info(`Saved Claude model=${selectedModel} to ~/.claude-mem/settings.json`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Client/server split — pure mode resolution (Task 16).
+//
+// `resolveInstallMode` is the unit-testable core of `install --mode
+// server|client`. It maps the new mode flags to a concrete runtime + the
+// downstream side-effects the install command must perform, with NO I/O:
+//   - mode=server  → run the backend (runtime server-beta), provision a key,
+//     install the local client/hooks by default.
+//   - mode=client  → thin install pointing at a remote server. Requires creds
+//     (either an --enroll token, or --server-url + --token). No local worker,
+//     no provisioning, no local client beyond hooks.
+//   - no mode      → legacy behavior, preserved exactly (worker / server-beta
+//     via the existing --runtime flag).
+// ---------------------------------------------------------------------------
+
+export interface InstallModeArgs {
+  mode?: 'server' | 'client';
+  runtime?: string;
+  enroll?: string;
+  serverUrl?: string;
+  token?: string;
+  withLocalClient?: boolean;
+}
+
+export interface ResolvedInstall {
+  runtime: 'worker' | 'server-beta' | 'client';
+  provision: boolean;
+  serverUrl: string;
+  apiKey: string;
+  withLocalClient: boolean;
+}
+
+export function resolveInstallMode(args: InstallModeArgs): ResolvedInstall {
+  if (args.mode === 'server') {
+    return {
+      runtime: 'server-beta',
+      provision: true,
+      serverUrl: '',
+      apiKey: '',
+      withLocalClient: args.withLocalClient ?? true,
+    };
+  }
+  if (args.mode === 'client') {
+    let url = args.serverUrl ?? '';
+    let key = args.token ?? '';
+    if (args.enroll) {
+      const e = decodeEnrollment(args.enroll);
+      url = e.url;
+      key = e.key;
+    }
+    if (!url || !key) {
+      throw new Error('client mode requires --enroll <token> or both --server-url and --token');
+    }
+    return { runtime: 'client', provision: false, serverUrl: url, apiKey: key, withLocalClient: false };
+  }
+  const runtime = (args.runtime as ResolvedInstall['runtime']) ?? 'worker';
+  return {
+    runtime,
+    provision: runtime === 'server-beta',
+    serverUrl: '',
+    apiKey: '',
+    withLocalClient: false,
+  };
 }
 
 export interface InstallOptions {
