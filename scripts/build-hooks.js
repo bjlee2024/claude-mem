@@ -124,6 +124,11 @@ function hookCommandByPath(parsed, dottedPath) {
   return parsed.hooks?.[event]?.[Number(groupIdx)]?.hooks?.[Number(hookIdx)]?.command ?? null;
 }
 
+function setHookCommandByPath(parsed, dottedPath, command) {
+  const [event, groupIdx, hookIdx] = dottedPath.split('.');
+  parsed.hooks[event][Number(groupIdx)].hooks[Number(hookIdx)].command = command;
+}
+
 async function verifyShellTemplateCanonical() {
   console.log('\n📋 Verifying Rule A shell templates match the canonical generator...');
 
@@ -143,27 +148,45 @@ async function verifyShellTemplateCanonical() {
   const { buildShellCommand } = await import(dataUrl);
 
   const manifest = shellTemplateManifest(buildShellCommand);
+  // Set CLAUDE_MEM_REGEN_HOOKS=1 to rewrite the host-managed config files from the
+  // canonical generator instead of failing on mismatch (use after editing the template).
+  const fixMode = process.env.CLAUDE_MEM_REGEN_HOOKS === '1';
 
   for (const [filePath, spec] of Object.entries(manifest)) {
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    let dirty = false;
     if (spec.kind === 'mcp') {
       const actual = parsed.mcpServers?.['mcp-search']?.args?.[1] ?? '';
       if (actual !== spec.command) {
-        throw new Error(
-          `Hand-edited shell string detected in ${filePath} (mcp-search). It no longer matches src/build/hook-shell-template.ts. ` +
-          `Update the generator (and this manifest) instead of hand-editing the launcher.`
-        );
+        if (fixMode) {
+          parsed.mcpServers['mcp-search'].args[1] = spec.command;
+          dirty = true;
+        } else {
+          throw new Error(
+            `Hand-edited shell string detected in ${filePath} (mcp-search). It no longer matches src/build/hook-shell-template.ts. ` +
+            `Update the generator (and this manifest) instead of hand-editing the launcher.`
+          );
+        }
       }
     } else {
       for (const [dottedPath, expected] of Object.entries(spec.commands)) {
         const actual = hookCommandByPath(parsed, dottedPath);
         if (actual !== expected) {
-          throw new Error(
-            `Hand-edited shell string detected in ${filePath} (${dottedPath}). It no longer matches src/build/hook-shell-template.ts. ` +
-            `Regenerate via the canonical generator instead of hand-editing the command.`
-          );
+          if (fixMode) {
+            setHookCommandByPath(parsed, dottedPath, expected);
+            dirty = true;
+          } else {
+            throw new Error(
+              `Hand-edited shell string detected in ${filePath} (${dottedPath}). It no longer matches src/build/hook-shell-template.ts. ` +
+              `Regenerate via the canonical generator instead of hand-editing the command.`
+            );
+          }
         }
       }
+    }
+    if (fixMode && dirty) {
+      fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2) + '\n');
+      console.log(`  ↻ regenerated ${filePath}`);
     }
   }
 

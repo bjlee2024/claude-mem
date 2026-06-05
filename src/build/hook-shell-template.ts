@@ -56,11 +56,15 @@ export interface ShellTemplateOptions {
   mcpExtraCacheRoots?: string[];
 }
 
-const CLAUDE_CODE_PATH_PRELUDE = `export PATH="$($SHELL -lc 'echo $PATH' 2>/dev/null):$PATH";`;
+// Node/Bun may live in a per-user version manager not on /bin/sh's PATH. Prepend
+// the login shell's PATH AND explicit fallbacks: mise shims (node→mise) and bun.
+const NODE_FALLBACK_DIRS = '$HOME/.local/share/mise/shims:$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin';
+
+const CLAUDE_CODE_PATH_PRELUDE = `export PATH="$($SHELL -lc 'echo $PATH' 2>/dev/null):${NODE_FALLBACK_DIRS}:$PATH";`;
 
 const CLAUDE_CODE_SETUP_PATH_PRELUDE =
   'export PATH="$HOME/.nvm/versions/node/v$(ls \\"$HOME/.nvm/versions/node\\" 2>/dev/null | ' +
-  "sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\";";
+  `sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)/bin:${NODE_FALLBACK_DIRS}:$PATH";`;
 
 const CODEX_CLI_PATH_PRELUDE =
   `_HP=$(printenv PATH 2>/dev/null || true); ` +
