@@ -15,6 +15,12 @@ export const AgentEventSchema = z.object({
   // SQLite repo ignores it. Optional and nullable so existing clients are
   // unaffected.
   platformSource: z.string().min(1).nullable().default(null),
+  // Stable per-event id supplied by the producer (e.g. the thin client's spool
+  // record id). The server derives agent_events.idempotency_key from it so a
+  // replayed offline write dedupes deterministically. Optional/nullable; when
+  // absent the server falls back to a payload-derived key. Must be declared
+  // here or zod strips it before toAgentEventInput() can read it.
+  sourceEventId: z.string().min(1).nullable().default(null),
   payload: z.unknown().default({}),
   contentSessionId: z.string().min(1).nullable().default(null),
   memorySessionId: z.string().min(1).nullable().default(null),
@@ -28,6 +34,7 @@ export const CreateAgentEventSchema = AgentEventSchema.omit({
 }).partial({
   serverSessionId: true,
   platformSource: true,
+  sourceEventId: true,
   payload: true,
   contentSessionId: true,
   memorySessionId: true
