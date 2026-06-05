@@ -48,12 +48,37 @@ export function createMiddleware(
   return middlewares;
 }
 
+// Allow same-origin and trusted-network access. GET from the viewer is same-origin
+// (no Origin header → allowed), but POST sends an Origin header even same-origin, so
+// localhost-only rejected the server-beta viewer (accessed over a Tailscale IP) with
+// "CORS not allowed". Permit localhost, private LAN, and Tailscale CGNAT (100.64.0.0/10),
+// plus an explicit CLAUDE_MEM_CORS_ALLOW_ORIGINS allowlist ("*" = any).
+function isAllowedCorsOrigin(origin: string): boolean {
+  const allow = (process.env.CLAUDE_MEM_CORS_ALLOW_ORIGINS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  if (allow.includes('*')) return true;
+  if (allow.includes(origin)) return true;
+
+  let host: string;
+  try { host = new URL(origin).hostname; } catch { return false; }
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+
+  const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 10) return true;                         // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12
+    if (a === 192 && b === 168) return true;           // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true; // Tailscale CGNAT 100.64.0.0/10
+  }
+  return false;
+}
+
 export function createCorsMiddleware(): RequestHandler {
   return cors({
     origin: (origin, callback) => {
-      if (!origin ||
-          origin.startsWith('http://localhost:') ||
-          origin.startsWith('http://127.0.0.1:')) {
+      if (!origin || isAllowedCorsOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error('CORS not allowed'));
