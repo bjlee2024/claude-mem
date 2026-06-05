@@ -545,6 +545,10 @@ function copyPluginToMarketplace(): void {
   ensureDirectoryExists(marketplaceDir);
 
   const allowedTopLevelEntries = [
+    // Claude Code loads the marketplace from <installLocation>/.claude-plugin/
+    // marketplace.json — omitting it makes Claude Code report "cache-miss" and
+    // refuse to load the marketplace, even though plugin/ was copied.
+    '.claude-plugin',
     '.agents',
     '.codex-plugin',
     'plugin',
