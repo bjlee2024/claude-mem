@@ -14,6 +14,8 @@ import type { Application, Request, Response } from 'express';
 import type { RouteHandler } from '../../services/server/Server.js';
 import type { PostgresQueryable } from '../../storage/postgres/utils.js';
 import { logger } from '../../utils/logger.js';
+import { renderContextFromObservations } from '../../services/context/ContextBuilder.js';
+import type { Observation } from '../../services/context/types.js';
 
 export interface ViewerObservation {
   id: string;
@@ -94,6 +96,35 @@ export function parsePagination(req: Request): { offset: number; limit: number; 
 
 interface CountRow { count: string }
 
+// Map a Postgres observation row to the canonical Observation shape the context
+// formatter expects (same mapping the client-mode context handler uses).
+function mapRowToObservation(row: ViewerObservationRow, idx: number, project: string): Observation {
+  const meta = row.metadata && typeof row.metadata === 'object'
+    ? (row.metadata as Record<string, unknown>)
+    : {};
+  const createdAt = row.created_at instanceof Date ? row.created_at : new Date(row.created_at);
+  const asJsonString = (v: unknown): string | null =>
+    Array.isArray(v) ? JSON.stringify(v) : typeof v === 'string' ? v : null;
+  return {
+    id: idx,
+    memory_session_id: typeof row.server_session_id === 'string' ? row.server_session_id : '',
+    platform_source: typeof meta.provider === 'string' ? meta.provider : undefined,
+    type: typeof meta.type === 'string' ? meta.type : (row.kind || 'observation'),
+    title: typeof meta.title === 'string' ? meta.title : null,
+    subtitle: typeof meta.subtitle === 'string' ? meta.subtitle : null,
+    narrative: typeof meta.narrative === 'string' ? meta.narrative
+      : (typeof row.content === 'string' ? row.content : null),
+    facts: asJsonString(meta.facts),
+    concepts: asJsonString(meta.concepts),
+    files_read: asJsonString(meta.files_read),
+    files_modified: asJsonString(meta.files_modified),
+    discovery_tokens: null,
+    created_at: createdAt.toISOString(),
+    created_at_epoch: createdAt.getTime(),
+    project,
+  };
+}
+
 export class ServerViewerDataRoutes implements RouteHandler {
   constructor(private readonly pool: PostgresQueryable) {}
 
@@ -108,7 +139,37 @@ export class ServerViewerDataRoutes implements RouteHandler {
     app.get('/api/stats', (req, res) => this.handleStats(req, res));
     app.get('/api/processing-status', (req, res) => this.handleProcessingStatus(req, res));
     app.get('/api/settings', (_req, res) => res.json({}));
+    app.get('/api/context/preview', (req, res) => this.handleContextPreview(req, res));
     app.get('/stream', (req, res) => this.handleStream(req, res));
+  }
+
+  // Settings-modal preview. The worker runtime renders this via generateContext()
+  // (SQLite); server-beta has no local SQLite, so render the same way from Postgres
+  // rows using the shared pure formatter.
+  private async handleContextPreview(req: Request, res: Response): Promise<void> {
+    try {
+      const project = typeof req.query.project === 'string' ? req.query.project : '';
+      if (!project) {
+        res.status(400).type('text/plain').send('project parameter is required');
+        return;
+      }
+      const result = await this.pool.query<ViewerObservationRow>(
+        `SELECT o.id, o.server_session_id, p.name AS project_name, o.kind, o.content,
+                o.metadata, o.created_at
+           FROM observations o
+           LEFT JOIN projects p ON o.project_id = p.id
+          WHERE p.name = $1 AND o.kind <> 'summary'
+          ORDER BY o.created_at DESC
+          LIMIT 50`,
+        [project]
+      );
+      const observations: Observation[] = result.rows.map((row, idx) => mapRowToObservation(row, idx, project));
+      const text = renderContextFromObservations(project, observations, `/preview/${project}`, true);
+      res.type('text/plain').send(text);
+    } catch (err) {
+      logger.error('SYSTEM', 'viewer /api/context/preview failed', { error: String(err) });
+      res.status(500).type('text/plain').send('Failed to render preview');
+    }
   }
 
   private async handleObservations(req: Request, res: Response, summariesOnly: boolean): Promise<void> {
