@@ -33,8 +33,16 @@ export const contextHandler: EventHandler = {
       try {
         const projectId = fixedProjectId ?? await resolver.resolve(cwd);
         const ctx = await client.contextObservations({ projectId, query: '', limit: 10 });
+        const clientContext = (ctx.context ?? '').trim();
+        // additionalContext → model; systemMessage → user-visible. The worker
+        // branch surfaces a terminal list when CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT
+        // is set; mirror that for client mode so recent activity is visible at startup.
+        const showTerminalOutput = loadFromFileOnce().CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT === 'true';
         return {
-          hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: (ctx.context ?? '').trim() },
+          hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: clientContext },
+          ...(showTerminalOutput && clientContext
+            ? { systemMessage: `📋 Recent activity (claude-mem):\n\n${clientContext}` }
+            : {}),
           exitCode: HOOK_EXIT_CODES.SUCCESS,
         };
       } catch {
