@@ -269,6 +269,10 @@ export function buildServerGenerationProviderFromEnv(): ServerGenerationProvider
       const token = process.env.CLAUDE_MEM_SERVER_OAUTH_TOKEN
         ?? process.env.CLAUDE_CODE_OAUTH_TOKEN ?? '';
       if (!token) return null;
+      if (!token.startsWith('sk-ant-oat')) {
+        logger.warn('SYSTEM', 'CLAUDE_MEM_SERVER_PROVIDER=subscription but the OAuth token is malformed (expected an sk-ant-oat… token from `claude setup-token`); generation disabled');
+        return null;
+      }
       const opts: { oauthToken: string; model?: string } = { oauthToken: token };
       if (process.env.CLAUDE_MEM_SERVER_MODEL) opts.model = process.env.CLAUDE_MEM_SERVER_MODEL;
       return new ClaudeSubscriptionObservationProvider(opts);

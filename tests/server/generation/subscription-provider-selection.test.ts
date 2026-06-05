@@ -24,11 +24,19 @@ describe('buildServerGenerationProviderFromEnv — subscription', () => {
     process.env.CLAUDE_MEM_SERVER_PROVIDER = 'subscription';
     process.env.CLAUDE_MEM_SERVER_OAUTH_TOKEN = 'sk-ant-oat01-primary';
     process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat01-fallback';
-    expect(buildServerGenerationProviderFromEnv()).toBeInstanceOf(ClaudeSubscriptionObservationProvider);
+    const provider = buildServerGenerationProviderFromEnv();
+    expect(provider).toBeInstanceOf(ClaudeSubscriptionObservationProvider);
+    expect((provider as any).oauthToken).toBe('sk-ant-oat01-primary');
   });
 
   it('returns null when provider=subscription but no token is set', () => {
     process.env.CLAUDE_MEM_SERVER_PROVIDER = 'subscription';
+    expect(buildServerGenerationProviderFromEnv()).toBeNull();
+  });
+
+  it('returns null when provider=subscription but the token is malformed', () => {
+    process.env.CLAUDE_MEM_SERVER_PROVIDER = 'subscription';
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'not-an-oat-token';
     expect(buildServerGenerationProviderFromEnv()).toBeNull();
   });
 });
