@@ -43,6 +43,24 @@ mock.module('../../../src/services/domain/ModeManager.js', () => ({
   },
 }));
 
+// Mutable context settings so individual tests can flip flags like
+// CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY. Reset in beforeEach.
+const baseContextSettings: Record<string, string> = {
+  CLAUDE_MEM_CONTEXT_OBSERVATIONS: '50',
+  CLAUDE_MEM_CONTEXT_FULL_COUNT: '0',
+  CLAUDE_MEM_CONTEXT_SESSION_COUNT: '10',
+  CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS: 'false',
+  CLAUDE_MEM_CONTEXT_SHOW_WORK_TOKENS: 'false',
+  CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_AMOUNT: 'false',
+  CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_PERCENT: 'false',
+  CLAUDE_MEM_CONTEXT_FULL_FIELD: 'narrative',
+  CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY: 'false',
+  CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE: 'false',
+  CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT: 'false',
+  CLAUDE_MEM_MODE: 'code',
+};
+let contextSettings: Record<string, string> = { ...baseContextSettings };
+
 mock.module('../../../src/shared/SettingsDefaultsManager.js', () => ({
   SettingsDefaultsManager: {
     get: (key: string) => {
@@ -50,20 +68,7 @@ mock.module('../../../src/shared/SettingsDefaultsManager.js', () => ({
       return '';
     },
     getInt: () => 0,
-    loadFromFile: () => ({
-      CLAUDE_MEM_CONTEXT_OBSERVATIONS: '50',
-      CLAUDE_MEM_CONTEXT_FULL_COUNT: '0',
-      CLAUDE_MEM_CONTEXT_SESSION_COUNT: '10',
-      CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS: 'false',
-      CLAUDE_MEM_CONTEXT_SHOW_WORK_TOKENS: 'false',
-      CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_AMOUNT: 'false',
-      CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_PERCENT: 'false',
-      CLAUDE_MEM_CONTEXT_FULL_FIELD: 'narrative',
-      CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY: 'false',
-      CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE: 'false',
-      CLAUDE_MEM_CONTEXT_SHOW_TERMINAL_OUTPUT: 'false',
-      CLAUDE_MEM_MODE: 'code',
-    }),
+    loadFromFile: () => ({ ...contextSettings }),
   },
 }));
 
@@ -164,6 +169,7 @@ beforeEach(() => {
   flushImpl = async () => {};
   madeSenderClient = null;
   contextObservationsImpl = async () => ({ observations: [], context: '' });
+  contextSettings = { ...baseContextSettings };
   loggerSpies = [
     spyOn(logger, 'info').mockImplementation(() => {}),
     spyOn(logger, 'debug').mockImplementation(() => {}),
@@ -273,6 +279,86 @@ describe('contextHandler — client runtime branch', () => {
 
     // exit code is SUCCESS
     expect(result.exitCode).toBe(HOOK_EXIT_CODES.SUCCESS);
+  });
+
+  it('renders the session summary panel from a kind=summary observation', async () => {
+    contextSettings.CLAUDE_MEM_CONTEXT_SHOW_LAST_SUMMARY = 'true';
+    const obsEpoch = Date.parse('2026-06-05T09:00:00.000Z');
+    const summaryEpoch = Date.parse('2026-06-05T10:00:00.000Z'); // newer than obs
+
+    contextObservationsImpl = async () => ({
+      observations: [
+        {
+          id: 'sum-1',
+          projectId: 'proj-id',
+          teamId: 'team-1',
+          serverSessionId: 'sess-sum',
+          kind: 'summary',
+          content: 'rendered summary text',
+          createdAtEpoch: summaryEpoch,
+          metadata: {
+            type: 'summary',
+            request: 'Fix the startup summary',
+            investigated: 'Traced the client context path',
+            learned: 'Summaries were hardcoded to empty',
+            completed: 'Mapped summary rows',
+            next_steps: 'Ship it',
+          },
+        },
+        {
+          id: 'obs-1',
+          projectId: 'proj-id',
+          teamId: 'team-1',
+          serverSessionId: 'sess-abc',
+          kind: 'observation',
+          content: 'did work',
+          createdAtEpoch: obsEpoch,
+          metadata: { type: 'observation', title: 'Did work', narrative: 'did work' },
+        },
+      ],
+      context: 'rendered summary text',
+    });
+
+    const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+    const result = await contextHandler.execute(sessionStartInput());
+    const additionalContext = (result.hookSpecificOutput as { additionalContext: string }).additionalContext;
+
+    // Summary panel fields render (agent format: **Label**: value)
+    expect(additionalContext).toContain('**Investigated**: Traced the client context path');
+    expect(additionalContext).toContain('**Learned**: Summaries were hardcoded to empty');
+    expect(additionalContext).toContain('**Completed**: Mapped summary rows');
+    expect(additionalContext).toContain('**Next Steps**: Ship it');
+    // Regular observation still shows in the timeline.
+    expect(additionalContext).toContain('Did work');
+    // Timestamp must NOT be the 1970 epoch-0 fallback.
+    expect(additionalContext).not.toContain('1970');
+    expect(workerCallLog.length).toBe(0);
+  });
+
+  it('maps createdAtEpoch so observations are not dated 1970', async () => {
+    const obsEpoch = Date.parse('2026-06-05T09:00:00.000Z');
+    contextObservationsImpl = async () => ({
+      observations: [
+        {
+          id: 'obs-ts',
+          projectId: 'proj-id',
+          teamId: 'team-1',
+          serverSessionId: 'sess-ts',
+          kind: 'observation',
+          content: 'work',
+          createdAtEpoch: obsEpoch,
+          metadata: { type: 'observation', title: 'Timestamped Work', narrative: 'work' },
+        },
+      ],
+      context: 'work',
+    });
+
+    const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+    const result = await contextHandler.execute(sessionStartInput());
+    const additionalContext = (result.hookSpecificOutput as { additionalContext: string }).additionalContext;
+
+    expect(additionalContext).toContain('Timestamped Work');
+    expect(additionalContext).not.toContain('1970');
   });
 
   it('offline returns empty context, never throws', async () => {

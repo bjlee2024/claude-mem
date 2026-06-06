@@ -116,8 +116,10 @@ export function renderContextFromObservations(
   observations: Observation[],
   cwd: string,
   forHuman: boolean,
+  summaries: SessionSummary[] = [],
+  sessionId?: string,
 ): string {
-  if (observations.length === 0) return '';
+  if (observations.length === 0 && summaries.length === 0) return '';
   // The worker loads the active mode at startup; the client hook path does not,
   // so loadContextConfig() → ModeManager.getActiveMode() throws "No mode loaded".
   // Load it on demand (idempotent — only when no mode is active yet).
@@ -129,10 +131,10 @@ export function renderContextFromObservations(
   return buildContextOutput(
     project,
     observations,
-    [],              // summaries — not available in client mode
+    summaries,
     loadContextConfig(),
     cwd,
-    undefined,       // sessionId — not available in client mode
+    sessionId,
     forHuman,
   );
 }
