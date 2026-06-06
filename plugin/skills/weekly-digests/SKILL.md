@@ -24,11 +24,18 @@ If the user wants a single sweeping report, use `timeline-report` instead. This 
 
 ## Prerequisites
 
-- claude-mem worker running
 - Project has at least one ISO week of observations (the pipeline degenerates gracefully — even N=1 works)
 - A clean output directory the user is comfortable writing into
+- **Runtime:** works in `worker` mode (local SQLite worker) and in `client` / `server-beta` mode (remote server). The data source differs in Step 2; Steps 3+ are identical.
 
-**Resolve the worker port** (do this once, reuse `$WORKER_PORT`):
+**Detect the runtime first** (reuse `$CMEM_RUNTIME`):
+
+```bash
+CMEM_RUNTIME="$(node -e "try{const s=require(require('path').join(require('os').homedir(),'.claude-mem','settings.json'));process.stdout.write(String(s.CLAUDE_MEM_RUNTIME||'worker'));}catch{process.stdout.write('worker');}" 2>/dev/null || echo worker)"
+echo "claude-mem runtime: $CMEM_RUNTIME"
+```
+
+**Worker mode only — resolve the worker port** (reuse `$WORKER_PORT`):
 
 ```bash
 WORKER_PORT="${CLAUDE_MEM_WORKER_PORT:-$(node -e "const fs=require('fs'),p=require('path'),os=require('os');const uid=(typeof process.getuid==='function'?process.getuid():77);const fallback=String(37700+(uid%100));try{const s=JSON.parse(fs.readFileSync(p.join(os.homedir(),'.claude-mem','settings.json'),'utf-8'));process.stdout.write(String(s.CLAUDE_MEM_WORKER_PORT||fallback));}catch{process.stdout.write(fallback);}" 2>/dev/null)}"
@@ -53,6 +60,10 @@ echo "$parent_project"
 
 ### Step 2: Fetch the Full Timeline and Save It
 
+Produce `.scratch/cm-timeline.md` (a markdown timeline with `### Mon DD, YYYY` date headers and per-observation lines). **Pick the branch matching `$CMEM_RUNTIME`:**
+
+**Worker mode** — fetch the pre-rendered markdown directly:
+
 ```bash
 mkdir -p .scratch
 curl -s "http://localhost:${WORKER_PORT}/api/context/inject?project=PROJECT_NAME&full=true" \
@@ -60,7 +71,33 @@ curl -s "http://localhost:${WORKER_PORT}/api/context/inject?project=PROJECT_NAME
 wc -l .scratch/cm-timeline.md
 ```
 
-Sanity-check: confirm the file is non-empty and has the expected structure (preamble, then date headers like `### Mon DD, YYYY`, then numeric observation lines `<id> <time> <emoji> <title>` and session boundary lines `S<n> <prompt> (Mon DD at HH:MMpm)`).
+**Client / server-beta mode** — fetch JSON from the server and render it into the same markdown shape so Steps 3+ work unchanged:
+
+```bash
+mkdir -p .scratch
+npx @bjlee2024/claude-mem timeline --project PROJECT_NAME > .scratch/cm-timeline.json
+node -e '
+const fs=require("fs");
+const obs=JSON.parse(fs.readFileSync(".scratch/cm-timeline.json","utf8")).observations||[];
+const EMOJI={bugfix:"🔴",feature:"🟣",refactor:"🔄",change:"✅",discovery:"🔵",decision:"⚖️",summary:"📝",observation:"🔵"};
+const out=[]; let day="";
+for(const o of obs){
+  const d=new Date(o.createdAtEpoch||0);
+  const hdr=d.toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"});
+  if(hdr!==day){day=hdr; out.push("", "### "+hdr, "");}
+  const m=o.metadata||{};
+  const t=m.title||(o.content||"").split("\n")[0].slice(0,80)||o.kind;
+  const time=d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+  out.push(`${o.id} ${time} ${EMOJI[m.type||o.kind]||"🔵"} ${t}`);
+}
+fs.writeFileSync(".scratch/cm-timeline.md", out.join("\n"));
+'
+wc -l .scratch/cm-timeline.md
+```
+
+Sanity-check: confirm the file is non-empty and has the expected structure (date headers like `### Mon DD, YYYY`, then observation lines `<id> <time> <emoji> <title>`). (In client/server mode session-boundary `S<n>` lines are absent — the split-by-week logic keys off the `### date` headers, so this is fine.)
+
+If empty/unreachable in client/server mode: `npx @bjlee2024/claude-mem client status` to verify server URL, key, reachability, and resolved project.
 
 ### Step 3: Split the Timeline Into Per-ISO-Week Files
 

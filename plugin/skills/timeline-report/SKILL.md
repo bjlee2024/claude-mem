@@ -20,9 +20,19 @@ Use when users ask for:
 
 ## Prerequisites
 
-The claude-mem worker must be running. The project must have claude-mem observations recorded.
+The project must have claude-mem observations recorded. The data source depends on the **runtime**:
 
-**Resolve the worker port** (do this once at the start and reuse `$WORKER_PORT` in every curl call below):
+- **worker mode** (default, local SQLite): the claude-mem worker must be running; this skill fetches from the local worker API and the local SQLite DB.
+- **client / server-beta mode** (remote server): this skill fetches the timeline from the remote server via the `timeline` CLI command. The Token Economics section (which needs local-only token columns) is omitted in this mode.
+
+**Detect the runtime first** (reuse `$CMEM_RUNTIME` below):
+
+```bash
+CMEM_RUNTIME="$(node -e "try{const s=require(require('path').join(require('os').homedir(),'.claude-mem','settings.json'));process.stdout.write(String(s.CLAUDE_MEM_RUNTIME||'worker'));}catch{process.stdout.write('worker');}" 2>/dev/null || echo worker)"
+echo "claude-mem runtime: $CMEM_RUNTIME"
+```
+
+**Worker mode only — resolve the worker port** (reuse `$WORKER_PORT` in every curl call below):
 
 ```bash
 WORKER_PORT="${CLAUDE_MEM_WORKER_PORT:-$(node -e "const fs=require('fs'),p=require('path'),os=require('os');const uid=(typeof process.getuid==='function'?process.getuid():77);const fallback=String(37700+(uid%100));try{const s=JSON.parse(fs.readFileSync(p.join(os.homedir(),'.claude-mem','settings.json'),'utf-8'));process.stdout.write(String(s.CLAUDE_MEM_WORKER_PORT||fallback));}catch{process.stdout.write(fallback);}" 2>/dev/null)}"
@@ -55,20 +65,30 @@ If a worktree is detected, use `$parent_project` (the basename of the parent rep
 
 ### Step 2: Fetch the Full Timeline
 
-Use Bash to fetch the complete timeline from the claude-mem worker API:
+Fetch the complete timeline. **Pick the branch matching `$CMEM_RUNTIME`:**
+
+**Worker mode** (`$CMEM_RUNTIME` = `worker`) — fetch from the local worker API:
 
 ```bash
 curl -s "http://localhost:${WORKER_PORT}/api/context/inject?project=PROJECT_NAME&full=true"
 ```
 
-This returns the entire compressed timeline -- every observation, session boundary, and summary across the project's full history. The response is pre-formatted markdown optimized for LLM consumption.
+This returns the entire compressed timeline as pre-formatted markdown optimized for LLM consumption.
+
+**Client / server-beta mode** (`$CMEM_RUNTIME` = `client` or `server-beta`) — fetch from the remote server via the CLI (handles auth, project resolution, and pagination):
+
+```bash
+npx @bjlee2024/claude-mem timeline --project PROJECT_NAME
+```
+
+This prints JSON `{ "observations": [ { id, kind, content, metadata: { title, subtitle, narrative, facts, concepts, files_read, files_modified }, createdAtEpoch, ... } ] }`, oldest-first, including session summaries (`kind: "summary"`). Use the `metadata.*` fields as the per-observation title/narrative/etc. and `createdAtEpoch` for timestamps. (Omit `--project` to use the current repo.)
 
 **Token estimates:** The full timeline size depends on the project's history:
 - Small project (< 1,000 observations): ~20-50K tokens
 - Medium project (1,000-10,000 observations): ~50-300K tokens
 - Large project (10,000-35,000 observations): ~300-750K tokens
 
-If the response is empty or returns an error, the worker may not be running or the project name may be wrong. Try `curl -s "http://localhost:${WORKER_PORT}/api/search?query=*&limit=1"` to verify the worker is healthy.
+If the response is empty or errors: in worker mode the worker may not be running or the project name may be wrong (`curl -s "http://localhost:${WORKER_PORT}/api/search?query=*&limit=1"` to verify); in client/server mode run `npx @bjlee2024/claude-mem client status` to check server reachability and the resolved project.
 
 ### Step 3: Estimate Token Count
 
@@ -84,7 +104,11 @@ Wait for user confirmation before continuing if the timeline exceeds 100K tokens
 
 ### Step 4: Analyze with a Subagent
 
-Deploy an Agent (using the Task tool) with the full timeline and the following analysis prompt. Pass the ENTIRE timeline as context to the agent. The agent should also be instructed to query the SQLite database at `~/.claude-mem/claude-mem.db` for the Token Economics section.
+Deploy an Agent (using the Task tool) with the full timeline and the following analysis prompt. Pass the ENTIRE timeline as context to the agent.
+
+**Token Economics (section 8) is worker-mode only.** The local SQLite columns it needs (`discovery_tokens`, `source_tool`, `prompt_number`, …) do not exist server-side.
+- **worker mode:** keep section 8 and instruct the agent to query `~/.claude-mem/claude-mem.db`.
+- **client / server-beta mode:** OMIT section 8 entirely. Drop the SQLite paragraph from the agent prompt and replace section 8 with a single line: "_Token Economics is unavailable in server/client mode (token data is not persisted server-side)._"
 
 **Agent prompt:**
 
@@ -195,8 +219,9 @@ Tell the user:
 
 ## Error Handling
 
-- **Empty timeline:** "No observations found for project 'X'. Check the project name with: `curl -s \"http://localhost:${WORKER_PORT}/api/search?query=*&limit=1\"`"
-- **Worker not running:** "The claude-mem worker is not responding on port ${WORKER_PORT}. Start it with your usual method or check `ps aux | grep worker-service`."
+- **Empty timeline (worker mode):** "No observations found for project 'X'. Check the project name with: `curl -s \"http://localhost:${WORKER_PORT}/api/search?query=*&limit=1\"`"
+- **Worker not running (worker mode):** "The claude-mem worker is not responding on port ${WORKER_PORT}. Start it with your usual method or check `ps aux | grep worker-service`."
+- **Empty / unreachable (client/server mode):** run `npx @bjlee2024/claude-mem client status` to verify the server URL, API key, reachability, and resolved project. An empty result usually means the wrong `--project` name or that this project has no observations on the server yet.
 - **Timeline too large:** For projects with 50,000+ observations, the timeline may exceed context limits. Suggest using date range filtering: `curl -s "http://localhost:${WORKER_PORT}/api/context/inject?project=X&full=true"` -- the current endpoint returns all observations; for extremely large projects, the user may want to analyze in time-windowed segments.
 
 ## Example

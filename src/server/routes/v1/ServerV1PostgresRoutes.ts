@@ -963,6 +963,45 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         }
       },
     ));
+
+    // Full project timeline — paginated read of ALL observations (incl.
+    // kind='summary') for a project, newest-first. Backs the timeline-report /
+    // weekly-digests skills in client/server mode (the worker's
+    // GET /api/context/inject?full=true has no /v1 equivalent until now).
+    app.post('/v1/timeline', readAuth, this.handleCreate(
+      z.object({
+        projectId: z.string().min(1),
+        limit: z.number().int().positive().max(500).optional(),
+        offset: z.number().int().nonnegative().optional(),
+      }),
+      async (req, res, body) => {
+        const teamId = this.requireTeamId(req, res);
+        if (!teamId) return;
+        if (!this.ensureProjectAllowed(req, res, body.projectId)) return;
+        try {
+          const repo = new PostgresObservationRepository(this.options.pool);
+          const effectiveLimit = body.limit ?? 200;
+          const offset = body.offset ?? 0;
+          const results = await repo.listByProject({
+            projectId: body.projectId,
+            teamId,
+            limit: effectiveLimit,
+            offset,
+          });
+          await this.auditRead(req, 'timeline.read', null, body.projectId, {
+            limit: effectiveLimit,
+            offset,
+            resultCount: results.length,
+          });
+          res.status(200).json({
+            observations: results.map(serializeObservation),
+            hasMore: results.length === effectiveLimit,
+          });
+        } catch (error) {
+          this.handleDbError(error, res, 'observation.timeline');
+        }
+      },
+    ));
   }
 
   private async auditRead(

@@ -185,6 +185,24 @@ export interface ServerBetaContextObservationsResponse {
   context: string;
 }
 
+// Full project timeline — paginated read of ALL observations (incl. kind='summary')
+// for a project. Backs the timeline-report / weekly-digests skills in client mode.
+export interface ServerBetaTimelineRequest {
+  projectId: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ServerBetaTimelineResponse {
+  observations: Array<{
+    id: string;
+    projectId: string;
+    content: string;
+    [key: string]: unknown;
+  }>;
+  hasMore: boolean;
+}
+
 // Client/server split — response from POST /v1/projects/resolve.
 export interface ServerBetaResolveProjectResponse { id: string }
 
@@ -266,6 +284,17 @@ export class ServerBetaClient {
       '/v1/context',
       this.buildSearchPayload(input),
     );
+  }
+
+  // Full project timeline — paginated, returns ALL observations (incl. summaries)
+  // ordered newest-first. Callers paginate via offset until hasMore is false.
+  async timelineObservations(
+    input: ServerBetaTimelineRequest,
+  ): Promise<ServerBetaTimelineResponse> {
+    const body: Record<string, unknown> = { projectId: input.projectId };
+    if (input.limit !== undefined) body.limit = input.limit;
+    if (input.offset !== undefined) body.offset = input.offset;
+    return this.request<ServerBetaTimelineResponse>('POST', '/v1/timeline', body);
   }
 
   // Client/server split — resolve-or-create a project by repo name.

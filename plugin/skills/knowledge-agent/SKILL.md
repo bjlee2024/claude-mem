@@ -5,6 +5,8 @@ description: Build and query AI-powered knowledge bases from claude-mem observat
 
 # Knowledge Agent
 
+> **Worker runtime only.** Knowledge agents are Chroma-backed and require the local worker. In `client` / `server-beta` mode the corpus tools return a guidance message and do nothing — use the **`mem-search`** skill (the `search` MCP tool) for memory recall against the server instead. Check your runtime with `npx @bjlee2024/claude-mem client status`.
+
 Build and query AI-powered knowledge bases from claude-mem observations.
 
 ## What Are Knowledge Agents?

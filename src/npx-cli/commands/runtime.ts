@@ -281,6 +281,94 @@ export async function runSearchCommand(queryParts: string[]): Promise<void> {
   }
 }
 
+/**
+ * Fetch a project's FULL timeline. Backs the timeline-report / weekly-digests
+ * skills across runtimes:
+ *  - client/server-beta: paginate POST /v1/timeline and print JSON { observations }
+ *    (all observations incl. kind='summary', oldest-first).
+ *  - worker: proxy GET /api/context/inject?...&full=true and print the rendered text.
+ *
+ * Flags: --project <name> (override cwd-derived project), --limit <n> (page size).
+ */
+export async function runTimelineCommand(args: string[] = []): Promise<void> {
+  ensureInstalledOrExit();
+
+  let projectOverride: string | undefined;
+  let pageSize = 200;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--project' && args[i + 1]) { projectOverride = args[++i]; continue; }
+    if (args[i] === '--limit' && args[i + 1]) { pageSize = Math.max(1, Math.min(500, parseInt(args[++i], 10) || 200)); continue; }
+  }
+
+  const runtime = selectRuntime();
+
+  if (runtime === 'client' || runtime === 'server-beta') {
+    const ctx = runtime === 'server-beta' ? buildServerBetaContext() : buildClientRuntimeContext();
+    if (!ctx) {
+      console.error(pc.red(
+        runtime === 'server-beta'
+          ? 'server-beta runtime selected but configuration is incomplete (missing CLAUDE_MEM_SERVER_BETA_URL, CLAUDE_MEM_SERVER_BETA_API_KEY, or CLAUDE_MEM_SERVER_BETA_PROJECT_ID).'
+          : 'client runtime selected but CLAUDE_MEM_SERVER_BETA_URL or CLAUDE_MEM_SERVER_BETA_API_KEY is missing.',
+      ));
+      process.exit(1);
+    }
+
+    let projectId = projectOverride ? undefined : ctx.projectId;
+    if (!projectId) {
+      const resolver = new ProjectResolver({ client: ctx.client, mapPath: join(DATA_DIR, 'project-map.json') });
+      try {
+        projectId = await resolver.resolve(projectOverride ?? process.cwd());
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(pc.red(`Failed to resolve project: ${message}`));
+        process.exit(1);
+      }
+    }
+
+    const observations: unknown[] = [];
+    let offset = 0;
+    try {
+      // Paginate until a page returns fewer than the page size (or empty).
+      for (;;) {
+        const page = await ctx.client.timelineObservations({ projectId, limit: pageSize, offset });
+        observations.push(...page.observations);
+        if (!page.hasMore || page.observations.length === 0) break;
+        offset += page.observations.length;
+        if (observations.length > 100000) break; // hard safety cap
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(pc.red(`Timeline fetch failed: ${message}`));
+      process.exit(1);
+    }
+
+    // Server returns newest-first per page; present oldest-first for a timeline.
+    observations.reverse();
+    console.log(JSON.stringify({ observations }, null, 2));
+    return;
+  }
+
+  // Worker path — proxy the legacy full-context render.
+  const project = projectOverride ?? '';
+  const workerPort = SettingsDefaultsManager.get('CLAUDE_MEM_WORKER_PORT');
+  const qs = project ? `projects=${encodeURIComponent(project)}&full=true` : 'full=true';
+  const url = `http://127.0.0.1:${workerPort}/api/context/inject?${qs}`;
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(pc.red(`Timeline fetch failed: ${message}`));
+    console.error(`Is the worker running? ${pc.bold('npx @bjlee2024/claude-mem start')}`);
+    process.exit(1);
+  }
+  if (!response.ok) {
+    console.error(pc.red(`Timeline fetch failed: HTTP ${response.status}`));
+    process.exit(1);
+  }
+  console.log(await response.text());
+}
+
 export function runTranscriptWatchCommand(): void {
   ensureInstalledOrExit();
   const bunPath = resolveBunOrExit();

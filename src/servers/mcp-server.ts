@@ -457,6 +457,19 @@ async function ensureWorkerConnection(): Promise<boolean> {
   }
 }
 
+// Corpus / knowledge-agent tools are worker-only (Chroma-backed CorpusStore +
+// local filesystem). Server-beta is Postgres-only and has no /v1/corpus surface,
+// so in client/server-beta mode these tools return guidance instead of failing
+// against a worker that isn't there.
+function corpusUnavailableInServerMode() {
+  return {
+    content: [{
+      type: 'text' as const,
+      text: 'Knowledge-agent / corpus tools require the worker runtime (Chroma-backed) and are not available in server/client mode yet. Use the `search` MCP tool (the mem-search skill) for memory recall against the server.',
+    }],
+  };
+}
+
 const tools = [
   {
     name: '__IMPORTANT',
@@ -867,6 +880,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       return await callWorkerAPIPost('/api/corpus', args);
     }
   },
@@ -879,6 +893,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       return await callWorkerAPI('/api/corpus', args);
     }
   },
@@ -894,6 +909,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       const { name, ...rest } = args;
       if (typeof name !== 'string' || name.trim() === '') throw new Error('Missing required argument: name');
       return await callWorkerAPIPost(`/api/corpus/${encodeURIComponent(name)}/prime`, rest);
@@ -912,6 +928,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       const { name, ...rest } = args;
       if (typeof name !== 'string' || name.trim() === '') throw new Error('Missing required argument: name');
       return await callWorkerAPIPost(`/api/corpus/${encodeURIComponent(name)}/query`, rest);
@@ -929,6 +946,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       const { name, ...rest } = args;
       if (typeof name !== 'string' || name.trim() === '') throw new Error('Missing required argument: name');
       return await callWorkerAPIPost(`/api/corpus/${encodeURIComponent(name)}/rebuild`, rest);
@@ -946,6 +964,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       additionalProperties: true
     },
     handler: async (args: any) => {
+      if (selectRuntime() !== 'worker') return corpusUnavailableInServerMode();
       const { name, ...rest } = args;
       if (typeof name !== 'string' || name.trim() === '') throw new Error('Missing required argument: name');
       return await callWorkerAPIPost(`/api/corpus/${encodeURIComponent(name)}/reprime`, rest);
