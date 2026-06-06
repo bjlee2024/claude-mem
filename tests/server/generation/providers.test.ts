@@ -130,6 +130,12 @@ describe('buildServerGenerationPrompt', () => {
     expect(result.prompt).toContain('<server_session_id>session-x</server_session_id>');
     expect(result.prompt).toContain('<project_name>demo</project_name>');
   });
+
+  it('instructs the model to write observation fields in English only (no Chinese/CJK)', () => {
+    const result = buildServerGenerationPrompt(makeContext());
+    expect(result.prompt).toContain('English ONLY');
+    expect(result.prompt).toMatch(/Never emit Chinese/i);
+  });
 });
 
 class FakeFetch {

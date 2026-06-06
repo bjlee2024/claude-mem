@@ -88,6 +88,12 @@ export function buildServerGenerationPrompt(
     'activity was trivial), return a single self-closing <skip_summary />',
     'tag and nothing else. Do not include any prose outside the XML.',
     '',
+    'LANGUAGE: Write every field (title, subtitle, facts, narrative, concepts)',
+    'in English ONLY. Never emit Chinese, Japanese, Korean, or any other',
+    'non-English text in these fields, even when the source events contain',
+    'such text — translate or summarize into English instead. Keep code',
+    'identifiers, file paths, and commands verbatim.',
+    '',
     'Schema for each <observation> block:',
     observationOutputSchema,
   ].join('\n');
