@@ -153,6 +153,9 @@ auto-generated per-commit detail.
 
 ## Fork-specific documentation index
 
+- **[Direction & Architecture vs. Upstream](./fork-vs-upstream-direction.md)** — how this
+  fork's design direction (scale-IN: personal, multi-device, keyless) compares to upstream's
+  server-beta vision (scale-OUT: teams, audit, multi-tenant).
 - **[Server & Client Modes](./public/server-client-modes.mdx)** — primary user guide for the
   distributed setup (install, enroll, Tailscale topology).
 - **Design specs & plans** (`docs/superpowers/`):
