@@ -183,6 +183,12 @@ The installer handles dependencies, plugin setup, AI provider configuration, wor
 
 ## Documentation
 
+> 🍴 **This is a fork of [`thedotmack/claude-mem`](https://github.com/thedotmack/claude-mem), published as `@bjlee2024/claude-mem`.**
+> **→ [Fork Guide & Changelog](docs/FORK.md)** — everything that differs from upstream: the
+> multi-device **[Server & Client Modes](docs/public/server-client-modes.mdx)**, subscription/local-model
+> generation, client-mode search, the full version history, and how to use it all.
+> [Compare every change ↗](https://github.com/thedotmack/claude-mem/compare/main...bjlee2024:claude-mem:main)
+
 📚 **[View Full Documentation](https://docs.claude-mem.ai/)** - Browse on official website
 
 ### Getting Started
