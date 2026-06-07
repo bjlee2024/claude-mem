@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Observation, Summary, UserPrompt, StreamEvent } from '../types';
 import { API_ENDPOINTS } from '../constants/api';
 import { TIMING } from '../constants/timing';
+import { authFetch } from '../utils/api';
 
 export function useSSE() {
   const [observations, setObservations] = useState<Observation[]>([]);
@@ -94,6 +95,20 @@ export function useSSE() {
     };
 
     connect();
+
+    // Seed the project list from /api/projects so the header dropdown is
+    // populated even in server-beta mode, whose SSE stream does not emit an
+    // `initial_load` event (it only keepalives). Worker mode also serves
+    // /api/projects, so this is a single, runtime-agnostic source of truth.
+    // Merged (not overwritten) so SSE-added live projects are preserved.
+    authFetch(API_ENDPOINTS.PROJECTS)
+      .then(res => (res.ok ? res.json() : { projects: [] }))
+      .then((data: { projects?: string[] }) => {
+        if (Array.isArray(data.projects) && data.projects.length > 0) {
+          setProjects(prev => Array.from(new Set<string>([...data.projects!, ...prev])));
+        }
+      })
+      .catch(() => { /* best-effort: header dropdown stays as SSE provides */ });
 
     return () => {
       if (eventSourceRef.current) {
