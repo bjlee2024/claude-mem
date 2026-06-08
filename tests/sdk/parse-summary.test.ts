@@ -1,4 +1,10 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock, afterAll } from 'bun:test';
+
+// Snapshot the real ModeManager before mocking so afterAll can restore it.
+// bun's mock.module is process-global and mock.restore() does NOT undo it, so
+// leaving it mocked breaks mode-loading tests in other files run afterwards.
+import * as realModeManager from '../../src/services/domain/ModeManager.js';
+const realModeManagerSnapshot = { ...realModeManager };
 
 mock.module('../../src/services/domain/ModeManager.js', () => ({
   ModeManager: {
@@ -9,6 +15,10 @@ mock.module('../../src/services/domain/ModeManager.js', () => ({
     }),
   },
 }));
+
+afterAll(() => {
+  mock.module('../../src/services/domain/ModeManager.js', () => realModeManagerSnapshot);
+});
 
 import { parseAgentXml } from '../../src/sdk/parser.js';
 
