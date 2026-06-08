@@ -109,6 +109,11 @@
 > /plugin install claude-mem
 ```
 
+> 🍴 **`@bjlee2024/claude-mem` fork** — npm install and the multi-device **server / client** setup:
+> `npx @bjlee2024/claude-mem install` (local) · `npx @bjlee2024/claude-mem install --mode server` (server box) · `npx @bjlee2024/claude-mem install --mode client --enroll <token>` (each device).
+> Full guide → [Server & Client Modes](../public/server-client-modes.mdx) · [English README](../../README.md#quick-start) · [Fork Guide](../FORK.md).
+
+
 Claude Code를 재시작하세요. 이전 세션의 컨텍스트가 자동으로 새 세션에 나타납니다.
 
 **주요 기능:**

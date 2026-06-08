@@ -110,6 +110,11 @@ Inicie uma nova sessão do Claude Code no terminal e digite os seguintes comando
 > /plugin install claude-mem
 ```
 
+> 🍴 **`@bjlee2024/claude-mem` fork** — npm install and the multi-device **server / client** setup:
+> `npx @bjlee2024/claude-mem install` (local) · `npx @bjlee2024/claude-mem install --mode server` (server box) · `npx @bjlee2024/claude-mem install --mode client --enroll <token>` (each device).
+> Full guide → [Server & Client Modes](../public/server-client-modes.mdx) · [English README](../../README.md#quick-start) · [Fork Guide](../FORK.md).
+
+
 Reinicie o Claude Code. O contexto de sessões anteriores aparecerá automaticamente em novas sessões.
 
 **Principais Recursos:**
