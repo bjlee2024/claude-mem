@@ -127,21 +127,21 @@
 
 ## Quick Start
 
+> 🍴 This is the **`@bjlee2024/claude-mem`** fork — install from this package (not the upstream `claude-mem`). See the **[Fork Guide](docs/FORK.md)** for what differs.
+
+### Default — local memory on one machine
+
 Install with a single command:
 
 ```bash
-npx claude-mem install
+npx @bjlee2024/claude-mem install
 ```
 
-Or install for Gemini CLI (auto-detects `~/.gemini`):
+Or install for Gemini CLI (auto-detects `~/.gemini`) / OpenCode:
 
 ```bash
-npx claude-mem install --ide gemini-cli
-```
-Or install for OpenCode:
-
-```bash
-npx claude-mem install --ide opencode
+npx @bjlee2024/claude-mem install --ide gemini-cli
+npx @bjlee2024/claude-mem install --ide opencode
 ```
 
 Or install from the plugin marketplace inside Claude Code:
@@ -154,9 +154,37 @@ Or install from the plugin marketplace inside Claude Code:
 
 Restart Claude Code or Gemini CLI. Context from previous sessions will automatically appear in new sessions.
 
-> **Note:** Claude-Mem is also published on npm, but `npm install -g claude-mem` installs the **SDK/library only** — it does not register the plugin hooks or set up the worker service. Always install via `npx claude-mem install` or the `/plugin` commands above.
+### Server & Client modes — shared memory across devices
+
+> **Fork feature.** Run one **server** (Postgres + Valkey, in Docker) and connect any number of thin **clients** — laptop, desktop, and the server box itself — that share **one memory pool** over a trusted network (e.g. Tailscale). **Clients never need a provider API key**: generation runs on the server (a Claude Code subscription or a local Ollama model). Requires the `server-beta` runtime.
+
+**1. On the server box** — set up the server stack:
+
+```bash
+npx @bjlee2024/claude-mem install --mode server
+```
+
+**2. Enroll each device** — on the server (where `CLAUDE_MEM_SERVER_DATABASE_URL` reaches Postgres), mint a one-time token using the address other devices can reach (your tailnet IP, **not** `127.0.0.1`):
+
+```bash
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
+```
+
+**3. On each client device** — redeem the token:
+
+```bash
+npx @bjlee2024/claude-mem install --mode client --enroll <token>
+```
+
+Verify connectivity any time with `npx @bjlee2024/claude-mem client status`. Revoke a device with `npx @bjlee2024/claude-mem server api-key revoke`.
+
+→ **Full guide: [Server & Client Modes](docs/public/server-client-modes.mdx)** — Tailscale topology, systemd unit, subscription/Ollama generation, and troubleshooting.
+
+> **Note:** `npm install -g @bjlee2024/claude-mem` installs the **SDK/library only** — it does not register the plugin hooks or set up the worker/server. Always install via `npx @bjlee2024/claude-mem install` (optionally `--mode server|client`) or the `/plugin` commands above.
 
 ### 🦞 OpenClaw Gateway
+
+> **Upstream integration.** The installer below points at upstream infrastructure (`install.cmem.ai`, `docs.claude-mem.ai`) and installs the upstream `claude-mem`, not this fork. Use it only if you specifically want the OpenClaw gateway integration.
 
 Install claude-mem as a persistent memory plugin on [OpenClaw](https://openclaw.ai) gateways with a single command:
 
