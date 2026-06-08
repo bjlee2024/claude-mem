@@ -61,6 +61,8 @@ interface LogContext {
 
 class Logger {
   private level: LogLevel | null = null;
+  private recentLogs: string[] = [];
+  private static readonly MAX_RECENT_LOGS = 2000;
   private useColor: boolean;
   private logFilePath: string | null = null;
   private logFileInitialized: boolean = false;
@@ -266,6 +268,14 @@ class Logger {
 
     const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] ${correlationStr}${message}${contextStr}${dataStr}`;
 
+    // In-memory ring buffer of recent lines. The server-beta runtime logs to
+    // stdout (no log file), so its viewer `/api/logs` endpoint reads from here
+    // instead of a file. Bounded to avoid unbounded growth.
+    this.recentLogs.push(logLine);
+    if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
+      this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+    }
+
     if (this.logFilePath) {
       try {
         appendFileSync(this.logFilePath, logLine + '\n', 'utf8');
@@ -279,6 +289,16 @@ class Logger {
       // DIAGNOSTIC: see note above.
       emitDiagnostic(logLine + '\n');
     }
+  }
+
+  /** Recent log lines from the in-memory ring buffer, newest last, joined by newlines. */
+  getRecentLogs(): string {
+    return this.recentLogs.join('\n');
+  }
+
+  /** Clear the in-memory ring buffer (backs the server-beta viewer's "clear logs"). */
+  clearRecentLogs(): void {
+    this.recentLogs = [];
   }
 
   debug(component: Component, message: string, context?: LogContext, data?: any): void {

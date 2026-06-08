@@ -144,6 +144,10 @@ export class ServerViewerDataRoutes implements RouteHandler {
     app.get('/api/settings', (_req, res) => this.handleGetSettings(res));
     app.post('/api/settings', (req, res) => this.handleSaveSettings(req, res));
     app.get('/api/context/preview', (req, res) => this.handleContextPreview(req, res));
+    // server-beta logs to stdout (no log file); the viewer's console reads the
+    // server process's in-memory log ring buffer instead of returning 404.
+    app.get('/api/logs', (_req, res) => res.json({ logs: logger.getRecentLogs() }));
+    app.post('/api/logs/clear', (_req, res) => { logger.clearRecentLogs(); res.json({ success: true }); });
     app.get('/stream', (req, res) => this.handleStream(req, res));
   }
 
