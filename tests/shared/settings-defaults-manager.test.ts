@@ -8,14 +8,31 @@ import { SettingsDefaultsManager } from '../../src/shared/SettingsDefaultsManage
 describe('SettingsDefaultsManager', () => {
   let tempDir: string;
   let settingsPath: string;
+  let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
+    // Isolate from ambient CLAUDE_MEM_* env vars (e.g. a local .env the test
+    // runner auto-loads). loadFromFile applies process.env via applyEnvOverrides,
+    // which would otherwise make results diverge from getAllDefaults() and make
+    // these tests pass/fail depending on the developer's environment.
+    savedEnv = {};
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('CLAUDE_MEM_')) {
+        savedEnv[key] = process.env[key];
+        delete process.env[key];
+      }
+    }
+
     tempDir = join(tmpdir(), `settings-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(tempDir, { recursive: true });
     settingsPath = join(tempDir, 'settings.json');
   });
 
   afterEach(() => {
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    }
     try {
       rmSync(tempDir, { recursive: true, force: true });
     } catch {
