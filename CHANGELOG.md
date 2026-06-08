@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.4.21] - 2026-06-08
+
+## Project resolution parity (client/server = worker)
+
+In `client` / `server-beta` mode, `ProjectResolver` grouped projects by the raw launch-folder basename, so running from a repo subdirectory created a separate project and worktrees weren't collapsed to the parent. This diverged from worker mode.
+
+Now client/server uses the same policy as the local worker (`getProjectContext`): the project is the **git repo ROOT folder name** (stable across subdirectories), with a `parent/worktree` composite for git worktrees, falling back to the cwd basename outside a git repo. Also aligns the resolved project UUID with the `metadata.project` name the hooks already compute.
+
+Running from the repo root is unaffected (same name). Only subdirectory/worktree launches change — to the correct, worker-equivalent project.
+
+## [13.4.20] - 2026-06-08
+
+## Server-beta viewer parity
+
+Fills in viewer features that returned 404 / stayed empty in server-beta mode.
+
+- **Console / Logs drawer:** the viewer's bottom-left console showed "failed to fetch logs: Not Found" because server-beta never served `/api/logs`. Added an in-memory log ring buffer (last 2000 lines) to the shared logger and serve `GET /api/logs` + `POST /api/logs/clear` from `ServerViewerDataRoutes`. (Shows the server process's logs; the generation worker is a separate container.)
+- **Header project dropdown** (from 13.4.19): now seeded from `/api/projects` so it lists all projects in server-beta, matching the Settings selector.
+- **English-only generation** (from 13.4.19): server generation prompt forbids Chinese/CJK in observation fields.
+
+Carries everything from 13.4.18–13.4.19 (client/server timeline-report & weekly-digests, `/v1/timeline` + `claude-mem timeline` CLI, knowledge-agent gating, summary panel + 1970 fix, upstream merge).
+
+## [13.4.19] - 2026-06-07
+
+## Viewer & generation fixes
+
+- **Viewer (server-beta):** the main-page header project dropdown was empty (only "All Projects") because the server-beta SSE stream sends no `initial_load` event. `useSSE` now seeds the project list from `/api/projects` (implemented in both worker and server-beta), matching the Settings selector. Single runtime-agnostic source of truth.
+- **Generation:** force **English-only** observation fields in the server generation prompt. Qwen-class local models (`CLAUDE_MEM_SERVER_MODEL=qwen2.5:7b-instruct`) were emitting Chinese titles (e.g. `新增功能与改进`) because no output language was specified; now the prompt mandates English and forbids CJK while keeping code identifiers verbatim.
+
+Includes everything from 13.4.18 (client/server-mode timeline-report & weekly-digests, `/v1/timeline` + `claude-mem timeline` CLI, knowledge-agent gating, server-mode summary panel + 1970 fix, upstream merge).
+
+## [13.4.18] - 2026-06-06
+
+## Client/server-mode memory-data skills
+
+Makes the memory-data skills work in **client / server-beta** runtime (previously worker-only), plus the prior server-mode fixes and the upstream merge — and brings npm current (13.4.9 → 13.4.18).
+
+### Skills now work in client/server mode
+- **timeline-report** & **weekly-digests**: detect `CLAUDE_MEM_RUNTIME`; worker mode unchanged, client/server mode fetches from the server. Token Economics is worker-only (token columns aren't persisted server-side) and is omitted in server mode.
+- **knowledge-agent**: corpus tools are Chroma/worker-only — now gated in client/server mode with a guidance message (use `mem-search` instead) rather than failing against an absent worker.
+
+### Server + CLI
+- New **`POST /v1/timeline`**: paginated full-project timeline (all observations incl. `kind='summary'`).
+- `listByProject` gains parameterized `offset`.
+- `ServerBetaClient.timelineObservations()` + new **`claude-mem timeline [--project <name>]`** CLI (client/server → JSON, worker → proxied render).
+
+### Also in this release (previously committed)
+- Server-mode SessionStart **session-summary panel** + **"Jan 1 1970" timestamp** fix.
+- Fork guide & upstream direction docs.
+- Merge of upstream \`9efb04da\` (build hygiene + bun-runner pre-ES2020 parse fix).
+
+Verified: typecheck clean; full suite shows no new failures vs baseline; \`/v1/timeline\` confirmed live end-to-end.
+
 ## [13.4.0] - 2026-05-29
 
 Clears a large defect backlog (plans 01–11 plus standalone fixes) and adds provider configurability. Test suite moved 46 → 0 failing and typecheck 24 → 0 errors over the branch.

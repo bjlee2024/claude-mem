@@ -4,6 +4,10 @@ import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
+// This fork's repo. Without an explicit --repo, `gh` resolves an ambiguous
+// default (often the `upstream` remote, thedotmack), so the changelog pulled
+// upstream releases and never reflected the fork's. Pin to the fork.
+const REPO = 'bjlee2024/claude-mem';
 const HEADER_LINES = [
   '# Changelog',
   '',
@@ -24,12 +28,12 @@ function exec(command) {
 }
 
 function listReleases() {
-  const releasesJson = exec('gh release list --limit 1000 --json tagName,publishedAt,name');
+  const releasesJson = exec(`gh release list --repo ${REPO} --limit 1000 --json tagName,publishedAt,name`);
   return JSON.parse(releasesJson);
 }
 
 function fetchReleaseBody(tagName) {
-  return exec(`gh release view ${tagName} --json body --jq '.body'`).trim();
+  return exec(`gh release view ${tagName} --repo ${REPO} --json body --jq '.body'`).trim();
 }
 
 function formatDate(isoDate) {
