@@ -27,6 +27,22 @@ describe('ServerBetaService', () => {
     }
     loggerSpies.splice(0).forEach(spy => spy.mockRestore());
     mock.restore();
+
+    // Tear down the ephemeral fixtures these integration tests create
+    // (teams named `phase4-*`, which cascade-delete their `phase4-project-*` /
+    // `phase4-skip-project-*` / `pa-*` / `pb-*` projects and api_keys). Without
+    // this, running against a shared Postgres accumulates junk projects that
+    // show up in the viewer. Best-effort; only when a test DB is configured.
+    if (TEST_DATABASE_URL) {
+      const pool = new pg.Pool({ connectionString: TEST_DATABASE_URL });
+      try {
+        await pool.query("DELETE FROM teams WHERE name LIKE 'phase4-%'");
+      } catch {
+        /* best-effort cleanup */
+      } finally {
+        await pool.end();
+      }
+    }
   });
 
   it('serves server-beta runtime labels from independent runtime routes', async () => {
