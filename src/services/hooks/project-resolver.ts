@@ -4,8 +4,9 @@
 // UUID, preserving worker-mode's per-repo isolation. Caches name->uuid in
 // ~/.claude-mem/project-map.json so each repo hits POST /v1/projects/resolve at
 // most once per machine.
-import { basename, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { getProjectContext } from '../../utils/project-name.js';
 
 export interface ProjectResolveClient {
   resolveProject(name: string): Promise<string>;
@@ -27,8 +28,13 @@ export class ProjectResolver {
     this.cache = this.load();
   }
 
+  // Same policy as worker mode (src/utils/project-name.ts): derive the project
+  // name from the git repo ROOT (stable across subdirectories) and use the
+  // `parent/worktree` composite when in a git worktree. Falls back to the cwd
+  // basename when not inside a git repo. This keeps client/server-beta project
+  // grouping identical to the local worker runtime.
   static projectName(cwd: string): string {
-    return basename(cwd);
+    return getProjectContext(cwd).primary;
   }
 
   async resolve(cwd: string): Promise<string> {
