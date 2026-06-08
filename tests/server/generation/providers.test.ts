@@ -131,10 +131,10 @@ describe('buildServerGenerationPrompt', () => {
     expect(result.prompt).toContain('<project_name>demo</project_name>');
   });
 
-  it('instructs the model to write observation fields in Korean and forbids Chinese', () => {
+  it('instructs the model to write observation fields in English only (no Chinese/CJK)', () => {
     const result = buildServerGenerationPrompt(makeContext());
-    expect(result.prompt).toMatch(/in Korean/i);
-    expect(result.prompt).toMatch(/Do NOT use Chinese/i);
+    expect(result.prompt).toContain('English ONLY');
+    expect(result.prompt).toMatch(/Never emit Chinese/i);
   });
 });
 
