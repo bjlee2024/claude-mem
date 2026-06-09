@@ -25,8 +25,19 @@ export interface PostgresObservation {
   metadata: JsonObject;
   embedding: JsonValue | null;
   createdByJobId: string | null;
+  generationTokens: number | null;
   createdAtEpoch: number;
   updatedAtEpoch: number;
+}
+
+export interface TokenEconomics {
+  totalTokens: number;
+  countedObservations: number;   // observations that carry a token count
+  totalObservations: number;
+  firstObservationAtEpoch: number | null;
+  lastObservationAtEpoch: number | null;
+  byMonth: Array<{ month: string; tokens: number; countedObservations: number }>;
+  topByCost: Array<{ id: string; kind: string; title: string | null; tokens: number; createdAtEpoch: number }>;
 }
 
 export interface PostgresObservationSource {
@@ -51,6 +62,7 @@ interface ObservationRow {
   metadata: unknown;
   embedding: unknown | null;
   created_by_job_id: string | null;
+  generation_tokens: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -80,6 +92,7 @@ export class PostgresObservationRepository {
     metadata?: JsonObject;
     embedding?: JsonValue | null;
     createdByJobId?: string | null;
+    generationTokens?: number | null;
   }): Promise<PostgresObservation> {
     await assertProjectOwnership(this.client, input.projectId, input.teamId);
     if (input.serverSessionId) {
@@ -94,9 +107,9 @@ export class PostgresObservationRepository {
       `
         INSERT INTO observations (
           id, project_id, team_id, server_session_id, kind, content,
-          generation_key, metadata, embedding, created_by_job_id
+          generation_key, metadata, embedding, created_by_job_id, generation_tokens
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
         ON CONFLICT (team_id, project_id, generation_key) WHERE generation_key IS NOT NULL DO UPDATE SET
           updated_at = observations.updated_at
         RETURNING *
@@ -111,7 +124,8 @@ export class PostgresObservationRepository {
         input.generationKey ?? null,
         JSON.stringify(input.metadata ?? {}),
         input.embedding == null ? null : JSON.stringify(input.embedding),
-        input.createdByJobId ?? null
+        input.createdByJobId ?? null,
+        input.generationTokens ?? null
       ]
     );
     return mapObservationRow(row!);
@@ -183,6 +197,64 @@ export class PostgresObservationRepository {
       serverSessionId: null,
       limit: input.limit ?? 10,
     });
+  }
+
+  // Token-economics aggregation for a project: total generation token cost,
+  // per-month breakdown, and the most expensive observations. Reads the real
+  // generation_tokens column (NULL on rows created before token capture shipped).
+  async aggregateTokens(input: {
+    projectId: string;
+    teamId: string;
+    topLimit?: number;
+  }): Promise<TokenEconomics> {
+    const params = [input.projectId, input.teamId];
+    const totalRes = await this.client.query<{
+      total_tokens: string; counted: string; total_observations: string;
+      first_at: Date | null; last_at: Date | null;
+    }>(
+      `
+        SELECT
+          COALESCE(SUM(generation_tokens), 0) AS total_tokens,
+          COUNT(*) FILTER (WHERE generation_tokens IS NOT NULL) AS counted,
+          COUNT(*) AS total_observations,
+          MIN(created_at) AS first_at,
+          MAX(created_at) AS last_at
+        FROM observations
+        WHERE project_id = $1 AND team_id = $2
+      `,
+      params
+    );
+    const monthRes = await this.client.query<{ month: string; tokens: string; counted: string }>(
+      `
+        SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+               COALESCE(SUM(generation_tokens), 0) AS tokens,
+               COUNT(*) FILTER (WHERE generation_tokens IS NOT NULL) AS counted
+        FROM observations
+        WHERE project_id = $1 AND team_id = $2
+        GROUP BY 1 ORDER BY 1 ASC
+      `,
+      params
+    );
+    const topRes = await this.client.query<{ id: string; kind: string; title: string | null; tokens: string; created_at: Date }>(
+      `
+        SELECT id, kind, metadata->>'title' AS title, generation_tokens AS tokens, created_at
+        FROM observations
+        WHERE project_id = $1 AND team_id = $2 AND generation_tokens IS NOT NULL
+        ORDER BY generation_tokens DESC
+        LIMIT $3
+      `,
+      [...params, input.topLimit ?? 5]
+    );
+    const t = totalRes.rows[0];
+    return {
+      totalTokens: Number(t?.total_tokens ?? 0),
+      countedObservations: Number(t?.counted ?? 0),
+      totalObservations: Number(t?.total_observations ?? 0),
+      firstObservationAtEpoch: t?.first_at ? new Date(t.first_at).getTime() : null,
+      lastObservationAtEpoch: t?.last_at ? new Date(t.last_at).getTime() : null,
+      byMonth: monthRes.rows.map(r => ({ month: r.month, tokens: Number(r.tokens), countedObservations: Number(r.counted) })),
+      topByCost: topRes.rows.map(r => ({ id: r.id, kind: r.kind, title: r.title, tokens: Number(r.tokens), createdAtEpoch: new Date(r.created_at).getTime() })),
+    };
   }
 }
 
@@ -391,6 +463,7 @@ function mapObservationRow(row: ObservationRow): PostgresObservation {
     metadata: toJsonObject(row.metadata),
     embedding: row.embedding,
     createdByJobId: row.created_by_job_id,
+    generationTokens: row.generation_tokens ?? null,
     createdAtEpoch: toEpoch(row.created_at),
     updatedAtEpoch: toEpoch(row.updated_at)
   };

@@ -214,6 +214,10 @@ export class ProviderObservationGenerator {
         rawText: result.rawText,
         modelId: result.modelId,
         providerLabel: result.providerLabel,
+        // Token economics — the provider already reports input+output tokens for
+        // this generation call; persist it so server-beta can compute Token
+        // Economics like the worker's discovery_tokens.
+        tokensUsed: result.tokensUsed,
         // Phase 11 — flow identity context from BullMQ payload into the
         // persistence layer so observations and audit rows carry the same
         // generation_job_id reference back through to the original API key.

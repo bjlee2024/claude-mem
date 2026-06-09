@@ -55,6 +55,7 @@ ${pc.bold('Runtime Commands')} (requires Bun, delegates to installed plugin):
   ${pc.cyan('npx @bjlee2024/claude-mem worker start|stop|restart|status')}    Worker compatibility aliases
   ${pc.cyan('npx @bjlee2024/claude-mem search <query>')}       Search observations
   ${pc.cyan('npx @bjlee2024/claude-mem timeline [--project <name>]')}    Full project timeline as JSON (client/server) or rendered text (worker)
+  ${pc.cyan('npx @bjlee2024/claude-mem token-economics [--project <name>]')}    Token cost aggregate as JSON (client/server)
   ${pc.cyan('npx @bjlee2024/claude-mem adopt [--dry-run] [--branch <name>]')}    Stamp merged worktrees into parent project
   ${pc.cyan('npx @bjlee2024/claude-mem cleanup [--dry-run]')}    Run one-time v12.4.3 pollution cleanup (or preview counts)
   ${pc.cyan('npx @bjlee2024/claude-mem transcript watch')}     Start transcript watcher
@@ -217,6 +218,12 @@ async function main(): Promise<void> {
     case 'timeline': {
       const { runTimelineCommand } = await import('./commands/runtime.js');
       await runTimelineCommand(args.slice(1));
+      break;
+    }
+
+    case 'token-economics': {
+      const { runTokenEconomicsCommand } = await import('./commands/runtime.js');
+      await runTokenEconomicsCommand(args.slice(1));
       break;
     }
 

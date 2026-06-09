@@ -1002,6 +1002,36 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         }
       },
     ));
+
+    // Token economics — aggregate generation token cost for a project (total,
+    // per-month, top-cost observations). Backs the timeline-report skill's
+    // "Token Economics & Memory ROI" section in client/server mode.
+    app.post('/v1/token-economics', readAuth, this.handleCreate(
+      z.object({
+        projectId: z.string().min(1),
+        topLimit: z.number().int().positive().max(50).optional(),
+      }),
+      async (req, res, body) => {
+        const teamId = this.requireTeamId(req, res);
+        if (!teamId) return;
+        if (!this.ensureProjectAllowed(req, res, body.projectId)) return;
+        try {
+          const repo = new PostgresObservationRepository(this.options.pool);
+          const result = await repo.aggregateTokens({
+            projectId: body.projectId,
+            teamId,
+            topLimit: body.topLimit ?? 5,
+          });
+          await this.auditRead(req, 'token_economics.read', null, body.projectId, {
+            totalTokens: result.totalTokens,
+            countedObservations: result.countedObservations,
+          });
+          res.status(200).json(result);
+        } catch (error) {
+          this.handleDbError(error, res, 'observation.token_economics');
+        }
+      },
+    ));
   }
 
   private async auditRead(

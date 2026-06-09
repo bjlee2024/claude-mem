@@ -23,7 +23,7 @@ Use when users ask for:
 The project must have claude-mem observations recorded. The data source depends on the **runtime**:
 
 - **worker mode** (default, local SQLite): the claude-mem worker must be running; this skill fetches from the local worker API and the local SQLite DB.
-- **client / server-beta mode** (remote server): this skill fetches the timeline from the remote server via the `timeline` CLI command. The Token Economics section (which needs local-only token columns) is omitted in this mode.
+- **client / server-beta mode** (remote server): this skill fetches the timeline from the remote server via the `timeline` CLI command, and the Token Economics section from the `token-economics` CLI command. (Token data is per-observation `generation_tokens`, captured since v13.4.x — older observations have none.)
 
 **Detect the runtime first** (reuse `$CMEM_RUNTIME` below):
 
@@ -106,9 +106,13 @@ Wait for user confirmation before continuing if the timeline exceeds 100K tokens
 
 Deploy an Agent (using the Task tool) with the full timeline and the following analysis prompt. Pass the ENTIRE timeline as context to the agent.
 
-**Token Economics (section 8) is worker-mode only.** The local SQLite columns it needs (`discovery_tokens`, `source_tool`, `prompt_number`, …) do not exist server-side.
-- **worker mode:** keep section 8 and instruct the agent to query `~/.claude-mem/claude-mem.db`.
-- **client / server-beta mode:** OMIT section 8 entirely. Drop the SQLite paragraph from the agent prompt and replace section 8 with a single line: "_Token Economics is unavailable in server/client mode (token data is not persisted server-side)._"
+**Token Economics (section 8) — data source differs by runtime:**
+- **worker mode:** keep section 8 and instruct the agent to query the local SQLite DB `~/.claude-mem/claude-mem.db` (columns `discovery_tokens`, `source_tool`, `prompt_number`, …).
+- **client / server-beta mode:** fetch the aggregate from the server and pass it to the agent instead of the SQLite paragraph:
+  ```bash
+  npx @bjlee2024/claude-mem token-economics --project PROJECT_NAME
+  ```
+  This returns JSON `{ totalTokens, countedObservations, totalObservations, byMonth: [{month, tokens, countedObservations}], topByCost: [{id, kind, title, tokens, createdAtEpoch}], firstObservationAtEpoch, lastObservationAtEpoch }`. Render section 8 from it (total generation tokens, monthly breakdown, top-cost observations). **Caveat to state in the report:** server-side token capture began at v13.4.x, so `countedObservations` may be far less than `totalObservations` — observations generated before then have no recorded cost. Drop the SQLite paragraph from the agent prompt in this mode.
 
 **Agent prompt:**
 

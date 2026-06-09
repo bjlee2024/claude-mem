@@ -369,6 +369,54 @@ export async function runTimelineCommand(args: string[] = []): Promise<void> {
   console.log(await response.text());
 }
 
+/**
+ * Token-economics aggregate for a project (client/server mode). Prints JSON
+ * { totalTokens, countedObservations, byMonth, topByCost, ... }. Backs the
+ * timeline-report skill's Token Economics section in server mode. Worker mode
+ * computes economics from the local SQLite DB directly (not via this command).
+ *
+ * Flags: --project <name> (override cwd-derived project).
+ */
+export async function runTokenEconomicsCommand(args: string[] = []): Promise<void> {
+  ensureInstalledOrExit();
+
+  let projectOverride: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--project' && args[i + 1]) { projectOverride = args[++i]; continue; }
+  }
+
+  const runtime = selectRuntime();
+  if (runtime !== 'client' && runtime !== 'server-beta') {
+    console.error(pc.yellow('token-economics is for client/server-beta runtime; in worker mode the timeline-report skill reads the local SQLite DB directly.'));
+    process.exit(1);
+  }
+
+  const ctx = runtime === 'server-beta' ? buildServerBetaContext() : buildClientRuntimeContext();
+  if (!ctx) {
+    console.error(pc.red('client/server runtime selected but CLAUDE_MEM_SERVER_BETA_URL or CLAUDE_MEM_SERVER_BETA_API_KEY is missing.'));
+    process.exit(1);
+  }
+
+  let projectId = projectOverride ? undefined : ctx.projectId;
+  if (!projectId) {
+    const resolver = new ProjectResolver({ client: ctx.client, mapPath: join(DATA_DIR, 'project-map.json') });
+    try {
+      projectId = await resolver.resolve(projectOverride ?? process.cwd());
+    } catch (error: unknown) {
+      console.error(pc.red(`Failed to resolve project: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  }
+
+  try {
+    const data = await ctx.client.tokenEconomics({ projectId });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (error: unknown) {
+    console.error(pc.red(`Token economics fetch failed: ${error instanceof Error ? error.message : String(error)}`));
+    process.exit(1);
+  }
+}
+
 export function runTranscriptWatchCommand(): void {
   ensureInstalledOrExit();
   const bunPath = resolveBunOrExit();

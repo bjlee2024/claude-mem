@@ -203,6 +203,22 @@ export interface ServerBetaTimelineResponse {
   hasMore: boolean;
 }
 
+// Token economics — aggregate generation token cost for a project.
+export interface ServerBetaTokenEconomicsRequest {
+  projectId: string;
+  topLimit?: number;
+}
+
+export interface ServerBetaTokenEconomicsResponse {
+  totalTokens: number;
+  countedObservations: number;
+  totalObservations: number;
+  firstObservationAtEpoch: number | null;
+  lastObservationAtEpoch: number | null;
+  byMonth: Array<{ month: string; tokens: number; countedObservations: number }>;
+  topByCost: Array<{ id: string; kind: string; title: string | null; tokens: number; createdAtEpoch: number }>;
+}
+
 // Client/server split — response from POST /v1/projects/resolve.
 export interface ServerBetaResolveProjectResponse { id: string }
 
@@ -295,6 +311,15 @@ export class ServerBetaClient {
     if (input.limit !== undefined) body.limit = input.limit;
     if (input.offset !== undefined) body.offset = input.offset;
     return this.request<ServerBetaTimelineResponse>('POST', '/v1/timeline', body);
+  }
+
+  // Token economics — aggregate generation token cost for a project.
+  async tokenEconomics(
+    input: ServerBetaTokenEconomicsRequest,
+  ): Promise<ServerBetaTokenEconomicsResponse> {
+    const body: Record<string, unknown> = { projectId: input.projectId };
+    if (input.topLimit !== undefined) body.topLimit = input.topLimit;
+    return this.request<ServerBetaTokenEconomicsResponse>('POST', '/v1/token-economics', body);
   }
 
   // Client/server split — resolve-or-create a project by repo name.

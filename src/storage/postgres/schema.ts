@@ -2,7 +2,7 @@
 
 import type { PostgresQueryable } from './utils.js';
 
-export const SERVER_BETA_POSTGRES_SCHEMA_VERSION = 1;
+export const SERVER_BETA_POSTGRES_SCHEMA_VERSION = 2;
 
 export const SERVER_BETA_POSTGRES_TABLES = [
   'server_beta_schema_migrations',
@@ -39,7 +39,7 @@ export async function bootstrapServerBetaPostgresSchema(client: PostgresQueryabl
         VALUES ($1, $2)
         ON CONFLICT (version) DO NOTHING
       `,
-      [SERVER_BETA_POSTGRES_SCHEMA_VERSION, 'phase 1 postgres observation storage foundation']
+      [SERVER_BETA_POSTGRES_SCHEMA_VERSION, 'observation storage foundation + generation_tokens (v2)']
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -267,6 +267,15 @@ CREATE INDEX IF NOT EXISTS idx_server_sessions_platform_source
   ON server_sessions(team_id, project_id, platform_source, started_at)
   WHERE platform_source IS NOT NULL;
 ALTER TABLE observations ADD COLUMN IF NOT EXISTS content_search TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+-- Token economics — per-observation generation token cost (input+output for the
+-- generation call), the server-beta analogue of the worker's discovery_tokens.
+-- Nullable, no default → safe additive migration that auto-applies on startup.
+-- No backfill is possible (token usage was never captured historically), so
+-- rows created before this shipped stay NULL.
+ALTER TABLE observations ADD COLUMN IF NOT EXISTS generation_tokens INTEGER;
+CREATE INDEX IF NOT EXISTS idx_observations_generation_tokens
+  ON observations(team_id, project_id, generation_tokens DESC NULLS LAST)
+  WHERE generation_tokens IS NOT NULL;
 ALTER TABLE observations DROP CONSTRAINT IF EXISTS observations_generation_key_key;
 ALTER TABLE observation_generation_jobs DROP CONSTRAINT IF EXISTS observation_generation_jobs_source_type_source_id_job_type_key;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_server_sessions_project_idempotency

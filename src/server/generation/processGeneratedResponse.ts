@@ -57,6 +57,11 @@ export interface ProcessGeneratedResponseInput {
   apiKeyId?: string | null;
   actorId?: string | null;
   sourceAdapter?: string | null;
+  // Token economics — total tokens (input+output) the provider used for this
+  // generation call. Attributed to the first persisted observation so a project
+  // SUM(generation_tokens) reflects real cost without double-counting a job that
+  // yields multiple observations.
+  tokensUsed?: number;
 }
 
 export async function processGeneratedResponse(
@@ -146,6 +151,10 @@ export async function processGeneratedResponse(
           model: input.modelId ?? null,
         },
         createdByJobId: fresh.id,
+        // Attribute the job's total token cost to the first persisted
+        // observation only, so SUM(generation_tokens) per project is exact even
+        // when one generation yields multiple observations.
+        generationTokens: persisted.length === 0 ? (input.tokensUsed ?? null) : null,
       });
       persisted.push(observation);
 
@@ -404,6 +413,7 @@ export async function processSessionSummaryResponse(
             model: input.modelId ?? null,
           },
           createdByJobId: fresh.id,
+          generationTokens: input.tokensUsed ?? null,
         });
         persisted.push(observation);
 
