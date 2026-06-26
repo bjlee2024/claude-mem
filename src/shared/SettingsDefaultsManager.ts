@@ -85,6 +85,10 @@ export interface SettingsDefaults {
   CLAUDE_MEM_CA_CERT_FILE: string;
   CLAUDE_MEM_CA_KEY_FILE: string;
   CLAUDE_MEM_WORKER_CERT_TTL_DAYS: string;
+  CLAUDE_MEM_WORKER_TLS_DIR: string;
+  CLAUDE_MEM_REDIS_TLS_CA_FILE: string;
+  CLAUDE_MEM_REDIS_TLS_CERT_FILE: string;
+  CLAUDE_MEM_REDIS_TLS_KEY_FILE: string;
 }
 
 export class SettingsDefaultsManager {
@@ -169,6 +173,10 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_CA_CERT_FILE: '',                            // mTLS CA certificate file; empty disables worker cert issuance (503)
     CLAUDE_MEM_CA_KEY_FILE: '',                             // mTLS CA private key file; empty disables worker cert issuance (503)
     CLAUDE_MEM_WORKER_CERT_TTL_DAYS: '7',                   // TTL (days) for issued worker client certificates
+    CLAUDE_MEM_WORKER_TLS_DIR: '',                          // Worker-side dir for provisioned mTLS client cert/key/ca; empty disables worker mTLS provisioning
+    CLAUDE_MEM_REDIS_TLS_CA_FILE: '',                       // Redis/Valkey TLS CA file; auto-populated by worker mTLS provisioning when CLAUDE_MEM_WORKER_TLS_DIR is set
+    CLAUDE_MEM_REDIS_TLS_CERT_FILE: '',                     // Redis/Valkey TLS client cert file; auto-populated by worker mTLS provisioning
+    CLAUDE_MEM_REDIS_TLS_KEY_FILE: '',                      // Redis/Valkey TLS client key file; auto-populated by worker mTLS provisioning
   };
 
   static getAllDefaults(): SettingsDefaults {

@@ -854,6 +854,27 @@ export async function runServerBetaGenerationWorker(): Promise<void> {
   // service.start(). Generation is enabled here even if env says
   // CLAUDE_MEM_GENERATION_DISABLED, because this IS the generation worker.
   delete process.env.CLAUDE_MEM_GENERATION_DISABLED;
+  // mTLS provisioning: if a TLS dir + enroll key are configured, fetch/renew a
+  // per-worker client cert and point ioredis at it. No-op when unconfigured.
+  const tlsDir = process.env.CLAUDE_MEM_WORKER_TLS_DIR?.trim();
+  const enrollKey = process.env.CLAUDE_MEM_SERVER_BETA_API_KEY?.trim();
+  const serverUrl = process.env.CLAUDE_MEM_SERVER_BETA_URL?.trim();
+  if (tlsDir && enrollKey && serverUrl) {
+    const os = await import('os');
+    const { provisionWorkerCert } = await import('../worker/provision-cert.js');
+    const cn = `worker-${os.hostname()}-${process.pid}`;
+    const prov = await provisionWorkerCert({ dir: tlsDir, commonName: cn, serverUrl, apiKey: enrollKey });
+    process.env.CLAUDE_MEM_REDIS_TLS_CA_FILE = prov.caFile;
+    process.env.CLAUDE_MEM_REDIS_TLS_CERT_FILE = prov.certFile;
+    process.env.CLAUDE_MEM_REDIS_TLS_KEY_FILE = prov.keyFile;
+    logger.info('SYSTEM', 'worker mTLS cert provisioned', { action: prov.action, cn });
+    const timer = setInterval(() => {
+      provisionWorkerCert({ dir: tlsDir, commonName: cn, serverUrl, apiKey: enrollKey })
+        .then(r => { if (r.action === 'issued') logger.info('SYSTEM', 'worker mTLS cert renewed', { cn }); })
+        .catch(err => logger.warn('SYSTEM', 'worker mTLS renewal failed', { error: err instanceof Error ? err.message : String(err) }));
+    }, 24 * 60 * 60 * 1000);
+    timer.unref?.();
+  }
   const service = await createServerBetaService();
   const state = service.getRuntimeState();
   logger.info('SYSTEM', 'Server beta generation worker started (no HTTP)', {
