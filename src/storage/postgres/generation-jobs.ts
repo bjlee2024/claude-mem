@@ -9,7 +9,8 @@ import {
   queryOne,
   toDate,
   toEpoch,
-  toJsonObject
+  toJsonObject,
+  toJsonbText
 } from './utils.js';
 
 export type ObservationGenerationJobSourceType = 'agent_event' | 'session_summary' | 'observation_reindex';
@@ -142,7 +143,7 @@ export class PostgresObservationGenerationJobRepository {
         idempotencyKey,
         input.bullmqJobId ?? null,
         input.maxAttempts ?? 3,
-        JSON.stringify(input.payload ?? {})
+        toJsonbText(input.payload)
       ]
     );
     return mapJobRow(row!);
@@ -202,7 +203,7 @@ export class PostgresObservationGenerationJobRepository {
         input.status,
         input.lockedBy ?? null,
         input.nextAttemptAt ?? null,
-        input.lastError == null ? null : JSON.stringify(input.lastError),
+        input.lastError == null ? null : toJsonbText(input.lastError),
         input.projectId,
         input.teamId
       ]
@@ -325,7 +326,7 @@ export class PostgresObservationGenerationJobEventsRepository {
         input.eventType,
         input.statusAfter,
         input.attempt ?? 0,
-        JSON.stringify(input.details ?? {}),
+        toJsonbText(input.details),
         input.teamId
       ]
     );
