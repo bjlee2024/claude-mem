@@ -118,6 +118,12 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
     process.exit(1);
   }
 
+  if (subCommand === 'ca') {
+    const { runServerCaCommand } = await import('./server-ca.js');
+    await runServerCaCommand(argv.slice(1));
+    return;
+  }
+
   if (subCommand === 'enroll') {
     await runServerEnrollCommand(argv.slice(1));
     return;
