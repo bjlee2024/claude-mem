@@ -12,8 +12,52 @@ describe('telemetry local sink (instrument-only)', () => {
   });
 
   it('captureEvent swallows bad input', () => {
-    // @ts-expect-error deliberately wrong type
-    expect(() => captureEvent(null)).not.toThrow();
+    const prev = process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+    // Force the DEBUG path so JSON.stringify/scrubProperties run on bad input.
+    process.env.CLAUDE_MEM_TELEMETRY_DEBUG = '1';
+    try {
+      // @ts-expect-error deliberately wrong type
+      expect(() => captureEvent(null)).not.toThrow();
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+      else process.env.CLAUDE_MEM_TELEMETRY_DEBUG = prev;
+    }
+  });
+
+  it('capture after shutdown writes nothing', async () => {
+    const prev = process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+    process.env.CLAUDE_MEM_TELEMETRY_DEBUG = '1';
+    const written: string[] = [];
+    const orig = process.stderr.write.bind(process.stderr);
+    // @ts-expect-error test stub
+    process.stderr.write = (chunk: string) => { written.push(String(chunk)); return true; };
+    try {
+      await shutdownTelemetry();
+      captureEvent('worker_started', { trigger: 'late' });
+    } finally {
+      process.stderr.write = orig;
+      if (prev === undefined) delete process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+      else process.env.CLAUDE_MEM_TELEMETRY_DEBUG = prev;
+    }
+    // The isShutdown latch must suppress even the debug write.
+    expect(written.join('')).toBe('');
+  });
+
+  it('DEBUG unset writes nothing to stderr', () => {
+    const prev = process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+    delete process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+    const written: string[] = [];
+    const orig = process.stderr.write.bind(process.stderr);
+    // @ts-expect-error test stub
+    process.stderr.write = (chunk: string) => { written.push(String(chunk)); return true; };
+    try {
+      captureEvent('observation_created', { observation_type: 'feature' });
+    } finally {
+      process.stderr.write = orig;
+      if (prev === undefined) delete process.env.CLAUDE_MEM_TELEMETRY_DEBUG;
+      else process.env.CLAUDE_MEM_TELEMETRY_DEBUG = prev;
+    }
+    expect(written.join('')).toBe('');
   });
 
   it('shutdownTelemetry resolves without a network round-trip', async () => {
