@@ -5,7 +5,7 @@ import pg from 'pg';
 import { createHash, randomBytes } from 'crypto';
 import { mock, spyOn } from 'bun:test';
 import { Server } from '../../../src/services/server/Server.js';
-import { ServerV1PostgresRoutes } from '../../../src/server/routes/v1/ServerV1PostgresRoutes.js';
+import { ServerV1PostgresRoutes, type ServerV1PostgresRoutesOptions } from '../../../src/server/routes/v1/ServerV1PostgresRoutes.js';
 import {
   bootstrapServerBetaPostgresSchema,
   createPostgresStorageRepositories,
@@ -78,10 +78,48 @@ export interface V1ServerContext {
 }
 
 /**
+ * Stub-auth overrides for a Postgres-free V1 server (worker-cert route tests).
+ * When `apiKey` is supplied, startV1Server skips Postgres entirely and backs
+ * the REAL requirePostgresServerAuth middleware with an in-memory api_keys
+ * lookup — so scope enforcement (e.g. `certs:issue` gating) is exercised for
+ * real, while caSigner/workerCertsRepo are injected directly.
+ */
+export interface StartV1ServerStubOptions {
+  caSigner?: import('../../../src/server/security/ca-store.js').CaSigner | null;
+  workerCertsRepo?: {
+    record(input: {
+      teamId: string;
+      apiKeyId: string | null;
+      commonName: string;
+      serial: string;
+      fingerprintSha256: string;
+      notAfter: Date;
+    }): Promise<{ id: string }>;
+  };
+  apiKey?: { rawKey: string; scopes: string[]; teamId?: string | null; projectId?: string | null };
+}
+
+export interface V1StubServerContext {
+  baseUrl: string;
+  port: number;
+  close: () => Promise<void>;
+}
+
+/**
  * Start an isolated V1 postgres server with a freshly bootstrapped schema.
  * Returns helpers for the test and a close() that tears everything down.
+ *
+ * When called with `{ apiKey: ... }` it instead starts a Postgres-free server
+ * with stub auth (see StartV1ServerStubOptions) and returns a V1StubServerContext.
  */
-export async function startV1Server(): Promise<V1ServerContext> {
+export function startV1Server(): Promise<V1ServerContext>;
+export function startV1Server(stub: StartV1ServerStubOptions): Promise<V1StubServerContext>;
+export async function startV1Server(
+  stub?: StartV1ServerStubOptions,
+): Promise<V1ServerContext | V1StubServerContext> {
+  if (stub?.apiKey) {
+    return startV1StubServer(stub);
+  }
   const testDatabaseUrl = process.env.CLAUDE_MEM_TEST_POSTGRES_URL;
   if (!testDatabaseUrl) {
     throw new Error('CLAUDE_MEM_TEST_POSTGRES_URL is not set');
@@ -171,4 +209,87 @@ export async function startV1Server(): Promise<V1ServerContext> {
       createProjectScopedKey(storage, team.id, projId),
     close,
   };
+}
+
+/**
+ * Postgres-free V1 server for worker-cert route tests. The real
+ * requirePostgresServerAuth middleware runs against an in-memory pool that
+ * only answers the api_keys hash lookup, so `certs:issue` scope gating is
+ * enforced by production code. Every other query (audit insert, actor lookup,
+ * ingest/end paths) returns an empty result — auditWrite swallows failures, so
+ * the worker-certs path never needs a live database.
+ */
+async function startV1StubServer(stub: StartV1ServerStubOptions): Promise<V1StubServerContext> {
+  const loggerSpies = [
+    spyOn(logger, 'info').mockImplementation(() => {}),
+    spyOn(logger, 'warn').mockImplementation(() => {}),
+    spyOn(logger, 'error').mockImplementation(() => {}),
+    spyOn(logger, 'debug').mockImplementation(() => {}),
+  ];
+
+  const apiKey = stub.apiKey!;
+  const keyHash = createHash('sha256').update(apiKey.rawKey).digest('hex');
+  const keyRow = {
+    id: crypto.randomUUID(),
+    team_id: apiKey.teamId ?? 't1',
+    project_id: apiKey.projectId ?? null,
+    scopes: apiKey.scopes,
+    revoked_at: null,
+    expires_at: null,
+    actor_id: null,
+  };
+
+  const fakePool = {
+    query: async (text: unknown, params?: unknown[]) => {
+      const sql = String(text);
+      if (sql.includes('api_keys') && sql.includes('key_hash')) {
+        const match = params?.[0] === keyHash;
+        return { rows: match ? [keyRow] : [], rowCount: match ? 1 : 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    },
+  };
+
+  const server = new Server({
+    getInitializationComplete: () => true,
+    getMcpReady: () => true,
+    onShutdown: mock(() => Promise.resolve()),
+    onRestart: mock(() => Promise.resolve()),
+    workerPath: '/test/worker.cjs',
+    runtime: 'server-beta',
+    getAiStatus: () => ({ provider: 'disabled', authMethod: 'api-key', lastInteraction: null }),
+  });
+
+  const routeOptions: ServerV1PostgresRoutesOptions = {
+    pool: fakePool as never,
+    queueManager: new DisabledServerBetaQueueManager('disabled in tests'),
+    authMode: 'api-key',
+    runtime: 'server-beta',
+    sessionPolicy: 'per-event',
+    getEventQueue: () => null,
+    getSummaryQueue: () => null,
+  };
+  if (stub.caSigner !== undefined) routeOptions.caSigner = stub.caSigner;
+  if (stub.workerCertsRepo !== undefined) routeOptions.workerCertsRepo = stub.workerCertsRepo;
+
+  server.registerRoutes(new ServerV1PostgresRoutes(routeOptions));
+  server.finalizeRoutes();
+  await server.listen(0, '127.0.0.1');
+  const address = server.getHttpServer()?.address();
+  if (!address || typeof address === 'string') throw new Error('no port');
+  const port = address.port;
+
+  const close = async (): Promise<void> => {
+    try {
+      await server.close();
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== 'ERR_SERVER_NOT_RUNNING') throw error;
+    } finally {
+      loggerSpies.forEach(spy => spy.mockRestore());
+      mock.restore();
+    }
+  };
+
+  return { baseUrl: `http://127.0.0.1:${port}`, port, close };
 }
