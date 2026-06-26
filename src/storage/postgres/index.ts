@@ -11,6 +11,7 @@ import { PostgresObservationRepository, PostgresObservationSourcesRepository } f
 import { PostgresProjectsRepository } from './projects.js';
 import { PostgresServerSessionsRepository } from './server-sessions.js';
 import { PostgresTeamsRepository } from './teams.js';
+import { PostgresWorkerCertsRepository } from './worker-certs.js';
 
 export * from './agent-events.js';
 export * from './auth.js';
@@ -22,6 +23,7 @@ export * from './projects.js';
 export * from './schema.js';
 export * from './server-sessions.js';
 export * from './teams.js';
+export * from './worker-certs.js';
 export type * from './utils.js';
 
 export interface PostgresStorageRepositories {
@@ -34,6 +36,7 @@ export interface PostgresStorageRepositories {
   observationSources: PostgresObservationSourcesRepository;
   observationGenerationJobs: PostgresObservationGenerationJobRepository;
   observationGenerationJobEvents: PostgresObservationGenerationJobEventsRepository;
+  workerCerts: PostgresWorkerCertsRepository;
 }
 
 export function createPostgresStorageRepositories(client: PostgresQueryable): PostgresStorageRepositories {
@@ -46,6 +49,7 @@ export function createPostgresStorageRepositories(client: PostgresQueryable): Po
     observations: new PostgresObservationRepository(client),
     observationSources: new PostgresObservationSourcesRepository(client),
     observationGenerationJobs: new PostgresObservationGenerationJobRepository(client),
-    observationGenerationJobEvents: new PostgresObservationGenerationJobEventsRepository(client)
+    observationGenerationJobEvents: new PostgresObservationGenerationJobEventsRepository(client),
+    workerCerts: new PostgresWorkerCertsRepository(client)
   };
 }

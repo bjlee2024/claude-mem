@@ -16,6 +16,7 @@ import {
 } from '../../supervisor/process-registry.js';
 import { sanitizeEnv } from '../../supervisor/env-sanitizer.js';
 import { ServerV1PostgresRoutes } from '../routes/v1/ServerV1PostgresRoutes.js';
+import { loadCaSigner, type CaSigner } from '../security/ca-store.js';
 import { SessionsObservationsAdapter } from '../compat/SessionsObservationsAdapter.js';
 import { SessionsSummarizeAdapter } from '../compat/SessionsSummarizeAdapter.js';
 import { ActiveServerBetaQueueManager } from './ActiveServerBetaQueueManager.js';
@@ -47,6 +48,18 @@ export interface ServerBetaRuntimeState {
     providerRegistry: ReturnType<ServerBetaServiceGraph['providerRegistry']['getHealth']>;
     eventBroadcaster: ReturnType<ServerBetaServiceGraph['eventBroadcaster']['getHealth']>;
   };
+}
+
+// Task 8 — load the mTLS CA signer from env so /v1/worker-certs can issue
+// client certs. Returns null when either CA file env is unset/blank, which
+// makes issuance 503 (a safe default that keeps enrollment disabled until a
+// CA is explicitly configured).
+export function caSignerFromEnv(env: NodeJS.ProcessEnv): CaSigner | null {
+  const certFile = env.CLAUDE_MEM_CA_CERT_FILE?.trim();
+  const keyFile = env.CLAUDE_MEM_CA_KEY_FILE?.trim();
+  if (!certFile || !keyFile) return null;
+  const ttlDays = Number.parseInt(env.CLAUDE_MEM_WORKER_CERT_TTL_DAYS ?? '7', 10) || 7;
+  return loadCaSigner({ certFile, keyFile, ttlDays });
 }
 
 class ServerBetaRuntimeInfoRoutes implements RouteHandler {
@@ -182,6 +195,10 @@ export class ServerBetaService {
       queueManager: this.graph.queueManager,
       authMode: this.graph.authMode === 'disabled' ? 'api-key' : this.graph.authMode,
       runtime: SERVER_BETA_RUNTIME,
+      // Task 8 — mTLS CA signer for POST /v1/worker-certs. Null (CA env unset)
+      // makes worker-cert issuance 503 — enrollment stays disabled until a CA
+      // is configured via CLAUDE_MEM_CA_CERT_FILE / CLAUDE_MEM_CA_KEY_FILE.
+      caSigner: caSignerFromEnv(process.env),
       // Session policy is read inside the routes (default 'per-event' from
       // resolveSessionGenerationPolicy(), env-overridable via
       // CLAUDE_MEM_SERVER_SESSION_POLICY). We do not duplicate it here.
@@ -837,6 +854,27 @@ export async function runServerBetaGenerationWorker(): Promise<void> {
   // service.start(). Generation is enabled here even if env says
   // CLAUDE_MEM_GENERATION_DISABLED, because this IS the generation worker.
   delete process.env.CLAUDE_MEM_GENERATION_DISABLED;
+  // mTLS provisioning: if a TLS dir + enroll key are configured, fetch/renew a
+  // per-worker client cert and point ioredis at it. No-op when unconfigured.
+  const tlsDir = process.env.CLAUDE_MEM_WORKER_TLS_DIR?.trim();
+  const enrollKey = process.env.CLAUDE_MEM_SERVER_BETA_API_KEY?.trim();
+  const serverUrl = process.env.CLAUDE_MEM_SERVER_BETA_URL?.trim();
+  if (tlsDir && enrollKey && serverUrl) {
+    const os = await import('os');
+    const { provisionWorkerCert } = await import('../worker/provision-cert.js');
+    const cn = `worker-${os.hostname()}-${process.pid}`;
+    const prov = await provisionWorkerCert({ dir: tlsDir, commonName: cn, serverUrl, apiKey: enrollKey });
+    process.env.CLAUDE_MEM_REDIS_TLS_CA_FILE = prov.caFile;
+    process.env.CLAUDE_MEM_REDIS_TLS_CERT_FILE = prov.certFile;
+    process.env.CLAUDE_MEM_REDIS_TLS_KEY_FILE = prov.keyFile;
+    logger.info('SYSTEM', 'worker mTLS cert provisioned', { action: prov.action, cn });
+    const timer = setInterval(() => {
+      provisionWorkerCert({ dir: tlsDir, commonName: cn, serverUrl, apiKey: enrollKey })
+        .then(r => { if (r.action === 'issued') logger.info('SYSTEM', 'worker mTLS cert renewed', { cn }); })
+        .catch(err => logger.warn('SYSTEM', 'worker mTLS renewal failed', { error: err instanceof Error ? err.message : String(err) }));
+    }, 24 * 60 * 60 * 1000);
+    timer.unref?.();
+  }
   const service = await createServerBetaService();
   const state = service.getRuntimeState();
   logger.info('SYSTEM', 'Server beta generation worker started (no HTTP)', {

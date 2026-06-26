@@ -43,6 +43,21 @@ export interface ServerV1PostgresRoutesOptions {
   getSummaryQueue?: () => ReturnType<ActiveServerBetaQueueManager['getQueue']> | null;
   sessionPolicy?: ServerSessionGenerationPolicy;
   sessionDebounceWindowMs?: number;
+  // mTLS worker-cert issuance. The signer verifies the CSR's self-signature
+  // before issuing a short-lived client cert; when null the /v1/worker-certs
+  // route returns 503 (issuance not configured). workerCertsRepo is exposed
+  // so tests can inject a stub; production falls back to the Postgres repo.
+  caSigner?: import('../../security/ca-store.js').CaSigner | null;
+  workerCertsRepo?: {
+    record(input: {
+      teamId: string;
+      apiKeyId: string | null;
+      commonName: string;
+      serial: string;
+      fingerprintSha256: string;
+      notAfter: Date;
+    }): Promise<{ id: string }>;
+  };
 }
 
 interface BatchPreValidationFailure {
@@ -146,6 +161,14 @@ export class ServerV1PostgresRoutes implements RouteHandler {
       authMode: this.options.authMode,
       allowLocalDevBypass: this.options.allowLocalDevBypass,
       requiredScopes: ['memories:read'],
+    });
+    // mTLS worker-cert issuance is gated by a dedicated `certs:issue` scope.
+    // A `memories:read`/`memories:write` key MUST NOT be able to mint client
+    // certificates, so this never shares the read/write scope set.
+    const certsAuth = requirePostgresServerAuth(this.options.pool, {
+      authMode: this.options.authMode,
+      allowLocalDevBypass: this.options.allowLocalDevBypass,
+      requiredScopes: ['certs:issue'],
     });
 
     // POST /v1/events — single event with optional async generation
@@ -1032,6 +1055,51 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         }
       },
     ));
+
+    // POST /v1/worker-certs — sign a worker CSR into a short-lived mTLS client
+    // cert. Gated by the `certs:issue` scope (see certsAuth). The CaSigner
+    // verifies the CSR's self-signature before issuing, so a forged/garbage
+    // CSR is rejected with 400 rather than silently signed. Every issuance is
+    // recorded (serial, fingerprint, notAfter) for later revocation/audit.
+    app.post('/v1/worker-certs', certsAuth, this.handleCreate(
+      z.object({ commonName: z.string().min(1).max(128), csr: z.string().min(1) }),
+      async (req, res, body) => {
+        const teamId = this.requireTeamId(req, res);
+        if (!teamId) return;
+        const signer = this.options.caSigner ?? null;
+        if (!signer) {
+          res.status(503).json({ error: 'Unavailable', message: 'Worker cert issuance is not configured (no CA)' });
+          return;
+        }
+        let signed: { certPem: string; caPem: string; notAfter: Date; serial: string; fingerprintSha256: string };
+        try {
+          signed = signer.sign(body.csr, body.commonName);
+        } catch (error) {
+          res.status(400).json({ error: 'ValidationError', message: error instanceof Error ? error.message : 'invalid CSR' });
+          return;
+        }
+        const repo = this.options.workerCertsRepo
+          ?? new (await import('../../../storage/postgres/worker-certs.js')).PostgresWorkerCertsRepository(this.options.pool);
+        await repo.record({
+          teamId,
+          apiKeyId: req.authContext?.apiKeyId ?? null,
+          commonName: body.commonName,
+          serial: signed.serial,
+          fingerprintSha256: signed.fingerprintSha256,
+          notAfter: signed.notAfter,
+        });
+        await this.auditWrite(req, 'worker_cert.issue', signed.serial, null, {
+          commonName: body.commonName,
+          notAfter: signed.notAfter.toISOString(),
+        });
+        res.status(201).json({
+          cert: signed.certPem,
+          ca: signed.caPem,
+          serial: signed.serial,
+          notAfter: signed.notAfter.toISOString(),
+        });
+      },
+    ));
   }
 
   private async auditRead(
@@ -1706,6 +1774,7 @@ function resolveAuditResourceType(action: string): string {
     'generation_job.cancelled_by_operator': 'observation_generation_job',
     'generation_job.stalled': 'observation_generation_job',
     'project.resolve': 'project',
+    'worker_cert.issue': 'worker_cert',
   };
   if (map[action]) return map[action]!;
   return action.split('.')[0] ?? 'unknown';

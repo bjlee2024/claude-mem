@@ -22,7 +22,7 @@ const UNSUPPORTED_SERVER_COMMANDS = new Set([
 
 function printServerUsage(): void {
   console.error(`Usage: ${pc.bold('npx @bjlee2024/claude-mem server <command>')}`);
-  console.error('Commands: start, stop, restart, status, logs, doctor, migrate, export, import, api-key create|list|revoke, enroll, keys rotate, worker start, jobs status|failed|retry|cancel');
+  console.error('Commands: start, stop, restart, status, logs, doctor, migrate, export, import, api-key create|list|revoke, enroll, worker-enroll, keys rotate, worker start, jobs status|failed|retry|cancel');
 }
 
 function failUnsupported(command: string): never {
@@ -118,8 +118,19 @@ export async function runServerCommand(argv: string[] = []): Promise<void> {
     process.exit(1);
   }
 
+  if (subCommand === 'ca') {
+    const { runServerCaCommand } = await import('./server-ca.js');
+    await runServerCaCommand(argv.slice(1));
+    return;
+  }
+
   if (subCommand === 'enroll') {
     await runServerEnrollCommand(argv.slice(1));
+    return;
+  }
+
+  if (subCommand === 'worker-enroll') {
+    await runServerWorkerEnrollCommand(argv.slice(1));
     return;
   }
 
@@ -244,6 +255,78 @@ async function runServerEnrollCommand(args: string[]): Promise<void> {
     const result = await createEnrollment({ pool, teamId, serverUrl, label });
     console.log('Enroll a device with:');
     console.log(`  npx @bjlee2024/claude-mem install --mode client --enroll ${result.token}`);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+async function runServerWorkerEnrollCommand(args: string[]): Promise<void> {
+  if (!process.env.CLAUDE_MEM_SERVER_DATABASE_URL) {
+    console.error(pc.red('Cannot enroll a worker: CLAUDE_MEM_SERVER_DATABASE_URL is not set.'));
+    console.error('Configure Postgres first, then re-run this command.');
+    process.exit(1);
+  }
+
+  // Parse optional --label <name> and --url <serverUrl>.
+  let label: string | undefined;
+  let cliUrl: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--label' || arg === '--url') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        console.error(pc.red(`${arg} requires a value, e.g. ${arg === '--label' ? '--label worker-1' : '--url https://my-server:37700'}`));
+        console.error('Usage: npx @bjlee2024/claude-mem server worker-enroll [--url <url>] [--label <name>]');
+        process.exit(1);
+      }
+      if (arg === '--label') {
+        label = value;
+      } else {
+        cliUrl = value;
+      }
+      i++; // consume the value token
+    }
+  }
+
+  const { createPostgresPool } = await import('../../storage/postgres/pool.js');
+  const { parsePostgresConfig } = await import('../../storage/postgres/config.js');
+  const { SettingsDefaultsManager } = await import('../../shared/SettingsDefaultsManager.js');
+  const { createWorkerEnrollment } = await import('./server-worker-enroll.js');
+  const { join } = await import('path');
+
+  // parsePostgresConfig throws when requireDatabaseUrl is true and no URL is set,
+  // but the pre-check above already exited. The non-null assertion is safe.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const config = parsePostgresConfig({ requireDatabaseUrl: true })!;
+
+  // URL resolution precedence:
+  //   1. explicit --url <value> from the CLI
+  //   2. CLAUDE_MEM_SERVER_BETA_URL from settings.json (via loadFromFile)
+  //   3. SettingsDefaultsManager.get() default (UID-derived localhost)
+  let serverUrl: string;
+  if (cliUrl) {
+    serverUrl = cliUrl;
+  } else {
+    const settingsPath = join(SettingsDefaultsManager.get('CLAUDE_MEM_DATA_DIR'), 'settings.json');
+    const loaded = SettingsDefaultsManager.loadFromFile(settingsPath);
+    serverUrl = loaded.CLAUDE_MEM_SERVER_BETA_URL || SettingsDefaultsManager.get('CLAUDE_MEM_SERVER_BETA_URL');
+    if (serverUrl.startsWith('http://127.') || serverUrl.startsWith('http://localhost')) {
+      console.warn(
+        `[worker-enroll] Warning: falling back to localhost URL (${serverUrl}).` +
+        ' Remote workers will not be able to reach this server.' +
+        ' Pass --url <tailnet-or-public-url> for cross-host worker enrollment.',
+      );
+    }
+  }
+
+  const pool = createPostgresPool(config);
+  try {
+    const teamId = await ensureDefaultTeamId(pool);
+    const result = await createWorkerEnrollment({ pool, teamId, serverUrl, label });
+    console.log('Configure a worker with:');
+    console.log(`  CLAUDE_MEM_SERVER_BETA_URL=${serverUrl}`);
+    console.log(`  CLAUDE_MEM_SERVER_BETA_API_KEY=${result.rawKey}`);
   } finally {
     await pool.end().catch(() => undefined);
   }
