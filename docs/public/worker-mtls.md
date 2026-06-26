@@ -88,6 +88,13 @@ and **auto-renews** when the certificate is within 2 days of expiry — issuing 
 fresh CSR with the same enrollment key. If a reusable, still-valid cert already
 exists on disk, startup reuses it instead of re-issuing.
 
+Auto-renewal writes the fresh cert to disk, but a long-running worker that has
+already connected keeps using its **original** cert on the live ioredis/BullMQ
+connection. To pick up a renewed cert on a **new** connection, restart (or
+redeploy) the worker. Operator-run workers are typically redeployed regularly,
+so this is normally a non-issue — the short TTL plus restart-on-redeploy is the
+intended refresh path.
+
 ## 4. Valkey mTLS
 
 Run Valkey (or Redis) with TLS-only, client-auth-required settings, mounting the

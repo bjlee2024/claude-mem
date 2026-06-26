@@ -2,7 +2,7 @@
 //
 // mTLS worker enrollment — `server worker-enroll` mints a `certs:issue`-scoped
 // API key and returns a one-line enrollment token. A worker uses this key to
-// request a client certificate from the CA (POST /v1/certs/issue), so the key
+// request a client certificate from the CA (POST /v1/worker-certs), so the key
 // is intentionally narrow (certs:issue only) — it must NOT carry memories scopes.
 //
 // We reuse the production key-gen (createRawApiKey), hashing (hashApiKey), and
