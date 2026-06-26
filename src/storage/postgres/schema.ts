@@ -2,7 +2,7 @@
 
 import type { PostgresQueryable } from './utils.js';
 
-export const SERVER_BETA_POSTGRES_SCHEMA_VERSION = 2;
+export const SERVER_BETA_POSTGRES_SCHEMA_VERSION = 3;
 
 export const SERVER_BETA_POSTGRES_TABLES = [
   'server_beta_schema_migrations',
@@ -10,6 +10,7 @@ export const SERVER_BETA_POSTGRES_TABLES = [
   'projects',
   'team_members',
   'api_keys',
+  'worker_certs',
   'audit_log',
   'server_sessions',
   'agent_events',
@@ -39,7 +40,7 @@ export async function bootstrapServerBetaPostgresSchema(client: PostgresQueryabl
         VALUES ($1, $2)
         ON CONFLICT (version) DO NOTHING
       `,
-      [SERVER_BETA_POSTGRES_SCHEMA_VERSION, 'observation storage foundation + generation_tokens (v2)']
+      [SERVER_BETA_POSTGRES_SCHEMA_VERSION, 'observation storage foundation + generation_tokens (v2) + worker_certs (v3)']
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -118,6 +119,20 @@ CREATE TABLE IF NOT EXISTS api_keys (
   CHECK (project_id IS NULL OR team_id IS NOT NULL),
   FOREIGN KEY (project_id, team_id) REFERENCES projects(id, team_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS worker_certs (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  api_key_id TEXT REFERENCES api_keys(id) ON DELETE SET NULL,
+  common_name TEXT NOT NULL,
+  serial TEXT NOT NULL,
+  fingerprint_sha256 TEXT NOT NULL,
+  not_after TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS worker_certs_team_idx ON worker_certs (team_id);
+CREATE UNIQUE INDEX IF NOT EXISTS worker_certs_serial_idx ON worker_certs (serial);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
