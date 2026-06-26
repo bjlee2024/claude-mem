@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { JsonObject, PostgresQueryable } from './utils.js';
-import { assertProjectOwnership, deterministicKey, newId, queryOne, toDate, toEpoch, toJsonObject } from './utils.js';
+import { assertProjectOwnership, deterministicKey, newId, queryOne, toDate, toEpoch, toJsonObject, toJsonbText } from './utils.js';
 import type { PostgresAgentEvent } from './agent-events.js';
 
 export interface PostgresServerSession {
@@ -90,7 +90,7 @@ export class PostgresServerSessionsRepository {
         input.agentType ?? null,
         input.platformSource ?? null,
         input.generationStatus ?? 'idle',
-        JSON.stringify(input.metadata ?? {})
+        toJsonbText(input.metadata)
       ]
     );
     return mapServerSessionRow(row!);

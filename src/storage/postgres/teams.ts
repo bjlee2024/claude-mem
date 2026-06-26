@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PostgresQueryable, JsonObject } from './utils.js';
-import { newId, queryOne, toEpoch, toJsonObject } from './utils.js';
+import { newId, queryOne, toEpoch, toJsonObject, toJsonbText } from './utils.js';
 
 export type PostgresTeamRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -51,7 +51,7 @@ export class PostgresTeamsRepository {
         VALUES ($1, $2, $3::jsonb)
         RETURNING *
       `,
-      [id, input.name, JSON.stringify(input.metadata ?? {})]
+      [id, input.name, toJsonbText(input.metadata)]
     );
     return mapTeamRow(row!);
   }
@@ -73,7 +73,7 @@ export class PostgresTeamsRepository {
           updated_at = now()
         RETURNING *
       `,
-      [input.teamId, input.userId, input.role, JSON.stringify(input.metadata ?? {})]
+      [input.teamId, input.userId, input.role, toJsonbText(input.metadata)]
     );
     return mapTeamMemberRow(row!);
   }

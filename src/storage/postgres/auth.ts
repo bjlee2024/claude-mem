@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { JsonObject, PostgresQueryable } from './utils.js';
-import { assertProjectOwnership, newId, queryOne, toDate, toEpoch, toJsonArray, toJsonObject } from './utils.js';
+import { assertProjectOwnership, newId, queryOne, toDate, toEpoch, toJsonArray, toJsonObject, toJsonbText } from './utils.js';
 
 export interface PostgresApiKey {
   id: string;
@@ -84,7 +84,7 @@ export class PostgresAuthRepository {
         input.teamId ?? null,
         input.projectId ?? null,
         input.actorId,
-        JSON.stringify(input.scopes ?? []),
+        toJsonbText(input.scopes ?? []),
         input.expiresAt ?? null
       ]
     );
@@ -125,7 +125,7 @@ export class PostgresAuthRepository {
         input.action,
         input.resourceType,
         input.resourceId ?? null,
-        JSON.stringify(input.details ?? {})
+        toJsonbText(input.details)
       ]
     );
     return mapAuditLogRow(row!);

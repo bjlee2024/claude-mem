@@ -83,6 +83,32 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(sortJson(value));
 }
 
+// Lone (unpaired) UTF-16 surrogate code units. Postgres `jsonb` rejects these
+// with `invalid input syntax for type json / Unicode low surrogate must follow
+// a high surrogate` — which happens when tool output is truncated mid-character
+// before it reaches the ingest path.
+const LONE_SURROGATE_UNIT =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+// The same lone surrogate as an ESCAPE in serialized JSON text. ES2019
+// well-formed JSON.stringify escapes unpaired surrogates as \udXXX while
+// keeping valid pairs literal, so any \udXXX in the output is unpaired. This
+// backstops object KEYS, which a stringify replacer cannot rewrite.
+const LONE_SURROGATE_ESCAPE = /\\ud[89a-f][0-9a-f]{2}/gi;
+
+/**
+ * Serialize a value to JSON text safe for a Postgres `jsonb` parameter.
+ * Replaces any lone UTF-16 surrogate — in string values (via a replacer) and in
+ * object keys (via an escape backstop) — with U+FFFD, so the insert can never
+ * fail with "invalid input syntax for type json". Valid surrogate pairs (real
+ * emoji) are preserved. Null/undefined default to `{}`.
+ */
+export function toJsonbText(value: unknown): string {
+  const json = JSON.stringify(value ?? {}, (_key, v) =>
+    typeof v === 'string' ? v.replace(LONE_SURROGATE_UNIT, '�') : v
+  );
+  return json.replace(LONE_SURROGATE_ESCAPE, '\\ufffd');
+}
+
 export function deterministicKey(parts: readonly unknown[]): string {
   const fingerprint = createHash('sha256')
     .update(canonicalJson(parts))

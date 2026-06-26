@@ -9,7 +9,8 @@ import {
   newId,
   queryOne,
   toEpoch,
-  toJsonObject
+  toJsonObject,
+  toJsonbText
 } from './utils.js';
 
 export type ObservationSourceType = 'agent_event' | 'session_summary' | 'observation_reindex' | 'manual';
@@ -122,8 +123,8 @@ export class PostgresObservationRepository {
         input.kind ?? 'observation',
         input.content,
         input.generationKey ?? null,
-        JSON.stringify(input.metadata ?? {}),
-        input.embedding == null ? null : JSON.stringify(input.embedding),
+        toJsonbText(input.metadata),
+        input.embedding == null ? null : toJsonbText(input.embedding),
         input.createdByJobId ?? null,
         input.generationTokens ?? null
       ]
@@ -325,7 +326,7 @@ export class PostgresObservationSourcesRepository {
         input.generationJobId ?? null,
         input.sourceType,
         input.sourceId,
-        JSON.stringify(input.metadata ?? {})
+        toJsonbText(input.metadata)
       ]
     );
     return mapObservationSourceRow(row!);

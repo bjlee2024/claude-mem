@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { JsonObject, PostgresQueryable } from './utils.js';
-import { newId, queryOne, toEpoch, toJsonObject } from './utils.js';
+import { newId, queryOne, toEpoch, toJsonObject, toJsonbText } from './utils.js';
 
 export interface PostgresProject {
   id: string;
@@ -38,7 +38,7 @@ export class PostgresProjectsRepository {
         VALUES ($1, $2, $3, $4::jsonb)
         RETURNING *
       `,
-      [id, input.teamId, input.name, JSON.stringify(input.metadata ?? {})]
+      [id, input.teamId, input.name, toJsonbText(input.metadata)]
     );
     return mapProjectRow(row!);
   }
