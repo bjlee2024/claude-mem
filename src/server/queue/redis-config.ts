@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RedisOptions } from 'ioredis';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import type { SettingsDefaults } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../shared/paths.js';
@@ -87,6 +87,20 @@ function connectionFromHost(host: string, port: number): RedisOptions {
   };
 }
 
+export function buildRedisTls(protocol: string, env: NodeJS.ProcessEnv): Record<string, unknown> | undefined {
+  if (protocol !== 'rediss:') return undefined;
+  const caFile = env.CLAUDE_MEM_REDIS_TLS_CA_FILE?.trim();
+  const certFile = env.CLAUDE_MEM_REDIS_TLS_CERT_FILE?.trim();
+  const keyFile = env.CLAUDE_MEM_REDIS_TLS_KEY_FILE?.trim();
+  const tls: Record<string, unknown> = {};
+  if (caFile) tls.ca = readFileSync(caFile, 'utf8');
+  if (certFile) tls.cert = readFileSync(certFile, 'utf8');
+  if (keyFile) tls.key = readFileSync(keyFile, 'utf8');
+  const servername = env.CLAUDE_MEM_REDIS_TLS_SERVERNAME?.trim();
+  if (servername) tls.servername = servername;
+  return tls;
+}
+
 function connectionFromUrl(rawUrl: string): RedisOptions {
   const parsed = new URL(rawUrl);
   if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
@@ -104,7 +118,7 @@ function connectionFromUrl(rawUrl: string): RedisOptions {
     username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
     password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
     db,
-    tls: parsed.protocol === 'rediss:' ? {} : undefined,
+    tls: buildRedisTls(parsed.protocol, process.env),
     maxRetriesPerRequest: null,
     connectTimeout: 1000,
     lazyConnect: true,
