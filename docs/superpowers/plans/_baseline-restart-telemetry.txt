@@ -1,0 +1,20 @@
+Baseline @ HEAD c7a27aba (branch: feat/merge-upstream-restart-telemetry, off main)
+Recorded: 2026-06-26
+
+=== bun test (summary tail) ===
+ 2123 pass
+ 24 skip
+ 1 fail
+ 4759 expect() calls
+Ran 2148 tests across 199 files. [23.01s]
+
+PRE-EXISTING FAILURE (present on clean main, NOT introduced by merge phases):
+tests/cli/handlers/session-lifecycle-client.test.ts
+  (fail) sessionInitHandler — client runtime branch > calls startSession once,
+         flushes spool, returns { continue: true, suppressOutput: true }
+  expect(flushCalls.length).toBe(1)  ->  Expected: 1, Received: 0
+  at tests/cli/handlers/session-lifecycle-client.test.ts:236:31
+
+=== npm run typecheck (tail) ===
+> tsc --noEmit && tsc --noEmit -p src/ui/viewer/tsconfig.json
+TYPECHECK_PASSED (exit 0, no type errors)
