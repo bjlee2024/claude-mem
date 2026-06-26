@@ -42,4 +42,19 @@ describe('CA', () => {
     const san = leaf.getExtension('subjectAltName') as { altNames: { value: string }[] } | undefined;
     expect(san?.altNames.map(a => a.value)).toContain('valkey');
   });
+
+  it('rejects a structurally-valid CSR whose signature does not match its public key', () => {
+    const ca = createCa({ commonName: 'claude-mem CA', days: 3650 });
+    const claimed = forge.pki.rsa.generateKeyPair(2048);
+    const attacker = forge.pki.rsa.generateKeyPair(2048);
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = claimed.publicKey;               // CSR claims `claimed`'s key
+    csr.setSubject([{ name: 'commonName', value: 'evil' }]);
+    csr.sign(attacker.privateKey, forge.md.sha256.create()); // but signed by a different key → verify() must fail
+    const csrPem = forge.pki.certificationRequestToPem(csr);
+    expect(csrPem).toContain('BEGIN CERTIFICATE REQUEST'); // it IS well-formed PEM (parses)
+    expect(() =>
+      signCsr({ caCertPem: ca.certPem, caKeyPem: ca.keyPem, csrPem, days: 7, serial: '02', eku: 'client' }),
+    ).toThrow();
+  });
 });
