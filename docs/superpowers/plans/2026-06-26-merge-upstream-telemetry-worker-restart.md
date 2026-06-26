@@ -991,3 +991,39 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-26-merge-upstream-tel
 2. **Inline Execution** — execute tasks in this session with batch checkpoints.
 
 Which approach?
+
+---
+
+## Post-Merge Outcome (2026-06-26)
+
+Executed Subagent-Driven. **Phase 1 (telemetry local-sink scaffold) + Phase 2 (worker-restart hardening) shipped; Phase 3 (richer telemetry instrumentation call sites) was deliberately skipped** by maintainer decision (instrument-only telemetry has no external value, and a wholesale take of `ResponseProcessor`/`SessionRoutes`/`SearchRoutes` would have dragged in non-telemetry behavior).
+
+- Branch `feat/merge-upstream-restart-telemetry`, 19 commits ahead of `main`. PR: https://github.com/bjlee2024/claude-mem/pull/1
+- Verification: `tsc --noEmit` clean · full `bun test` **2208 pass / 24 skip / 1 fail** (baseline `main` was 2123 pass / 1 fail → +85, zero new failures; the 1 fail is a pre-existing order-dependent flake in `tests/cli/handlers/session-lifecycle-client.test.ts`) · server/client suites **222 pass / 0 fail** · `npm run build` bundle + guard gates pass · **no `posthog-node` dependency, no telemetry egress**.
+- An 18-agent adversarial review returned **GO_WITH_NOTES** (0 must-fix). It surfaced 4 benign, additive "ride-along" changes that came with taking fork-clean files at the `c0b96288` boundary (#2768 localhost-only stale-worker recycle, #2822 settings-backed API timeout with identical defaults, #2500 transcript subcommand dispatch, #2804 cold-boot wait extension) — all disclosed in the PR body.
+
+### Live verification finding — `build-and-sync` worker:restart vs server-beta Docker
+
+Running `npm run build-and-sync` after the merge produced:
+
+```
+ℹ Worker restart on port 37700 returned status 403
+Worker restart verification failed (old pid: 1, expected version: 13.4.22,
+ spawned script: none (port still bound — nothing spawned)); last health: {"pid":1,"version":"13.4.21"}
+```
+
+**Root cause (confirmed, NOT a regression):** this machine runs claude-mem as a **server-beta `docker-compose` stack** (`docker-compose.my.yml`: `claude-mem-server` + `claude-mem-worker` + `postgres` + `valkey`), and port 37700 is held by the dockerized `claude-mem-server` container (`runtime: server-beta`, `pid: 1`, redis at `valkey:6379`). `npm run worker:restart` is a **host CLI** that restarts a *local* worker by `POST 127.0.0.1:37700/api/admin/restart`. That request crosses the host→container boundary, so inside the container its source IP is the docker bridge gateway (`172.18.0.1`), and the `requireLocalhost` admin guard (`src/services/worker/http/middleware.ts`) correctly returns **403**. The new *verified-restart* logic then reports the failure instead of silently lying. Evidence: a safe `GET /api/admin/doctor` host→container probe reproduces the 403 (`{"error":"Forbidden","message":"Admin endpoints are only accessible from localhost"}`) while `GET /api/health` returns 200; the route+guard exist identically on `main`; and the running container was version `13.4.21` (older than `main`), so the merged code never even executed. Nothing was damaged — the stack stayed healthy and no rogue local worker spawned.
+
+**Implication:** the worker-restart hardening (#2894) primarily benefits the *local* `worker-service.cjs` runtime, which `docker-compose.my.yml` explicitly **never spawns**. For this deployment, container lifecycle is owned by Docker/compose, so `worker:restart` is inapplicable by design.
+
+### Deploying the merged code to the server-beta Docker stack
+
+The image bakes in the prebuilt `plugin/` tree (`docker/claude-mem/Dockerfile`: `COPY plugin/ /opt/claude-mem/`) — it does **not** build from `src` inside the container. So the flow is: ensure `plugin/` is freshly built (`npm run build`, already committed), then rebuild + recreate the containers — **not** `worker:restart`:
+
+```bash
+docker compose -f docker-compose.my.yml build
+docker compose -f docker-compose.my.yml up -d
+# verify: curl -s http://127.0.0.1:37700/api/health | grep -o '"version":"[^"]*"'  → expect 13.4.22
+```
+
+`postgres` and `valkey` are unchanged and stay up; only `claude-mem-server` + `claude-mem-worker` are recreated. The BullMQ queue persists in the `valkey`/`postgres` volumes, so in-flight jobs survive the recreate.
