@@ -897,8 +897,14 @@ export async function runServerBetaGenerationWorker(): Promise<void> {
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
 
-  // Block forever — Workers run in background via BullMQ. Without this the
-  // process would exit and BullMQ jobs would never be consumed.
+  // Keep the process alive so BullMQ's background workers keep consuming.
+  // A bare `await new Promise(() => {})` is NOT a keep-alive under Bun: the
+  // event loop empties (BullMQ's blocking connection is not counted as an
+  // active handle, and the pg pool idle-closes after idleTimeoutMillis), so the
+  // process exits 0 (`beforeExit`) ~30s in and the container restart-loops.
+  // A non-unref'd interval is a real active handle that holds the loop open.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  void keepAlive;
   await new Promise<void>(() => {});
 }
 
