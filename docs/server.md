@@ -100,7 +100,32 @@ duplicate observations.
 CLAUDE_MEM_AUTH_MODE=api-key
 ```
 
-API keys are created with:
+`CLAUDE_MEM_AUTH_MODE=api-key` is a **server-side** setting (and the
+default — `requireServerAuth` falls back to `'api-key'` when the variable
+is unset). It means **every request must carry a bearer key**:
+
+```
+Authorization: Bearer <raw-key>
+```
+
+A request with no key gets `401 Unauthorized`; a request whose key is
+invalid or lacks the required scope gets `403 Forbidden`
+(`src/server/middleware/auth.ts`). So **a remote client always needs an
+API key** — there is no anonymous access. The only exception is the
+`local-dev` loopback bypass, which requires `127.0.0.1` and is rejected in
+Docker (see the warning below); a remote client can never qualify for it.
+
+### Do I need a key, and where do I find it?
+
+Yes — a remote client cannot talk to an `api-key` server without one.
+Keys are **not retrievable after creation**: only a salted hash is stored
+in Postgres (`api_keys.key_hash`), never the raw value. `api-key list`
+shows metadata and a non-secret `prefix`, but **not** the key itself.
+
+> If you have lost a key, you cannot look it up — mint a new one (below)
+> and revoke the old one. Existing keys/devices are unaffected.
+
+### 1. Create a key (on the server host)
 
 ```sh
 claude-mem server api-key create \
@@ -108,16 +133,64 @@ claude-mem server api-key create \
   --scope memories:read,memories:write
 ```
 
-The raw key is shown **once**; only a SHA-256 hash is stored in Postgres
-(`api_keys.key_hash`). Revoke with:
+Flags:
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--name`    | `server-api-key` | Human label, shown in `list`. Use one per client/device so you can revoke just that one. |
+| `--scope`   | `memories:read,memories:write` | Comma-separated. Omit for the read+write default; pass `*` only for a privileged admin key. |
+| `--team`    | none | Restrict the key to a team. |
+| `--project` | none | Restrict the key to a single project. Clients that resolve projects per-repo should leave this unset. |
+
+It prints JSON; the `key` field is the **raw key, shown only once** — copy
+it now:
+
+```json
+{
+  "id": "ak_…",
+  "key": "cmk_…",          // ← the raw bearer key, copy it immediately
+  "name": "ci",
+  "scopes": ["memories:read", "memories:write"]
+}
+```
+
+> Server-side commands (`api-key create|list|revoke`, `enroll`) need
+> database access — run them where `CLAUDE_MEM_SERVER_DATABASE_URL` points
+> at the server's Postgres (typically the server host). If Postgres is not
+> published to the host, target the Postgres container's address.
+
+### 2. Give the key to the client
+
+Either bundle it in a one-line enrollment token (recommended — see
+[Server & Client Modes](public/server-client-modes.mdx)):
 
 ```sh
-claude-mem server api-key revoke <id>
+claude-mem server enroll --url http://<server-reachable-host>:37700 --label laptop
+# → npx @bjlee2024/claude-mem install --mode client --enroll <token>
+```
+
+…or hand the raw key to the client directly:
+
+```sh
+npx @bjlee2024/claude-mem install --mode client \
+  --server-url http://<server-reachable-host>:37700 \
+  --token <raw-key>
+```
+
+Either path writes `CLAUDE_MEM_SERVER_BETA_API_KEY` (plus
+`CLAUDE_MEM_SERVER_BETA_URL`) into the client's `~/.claude-mem` settings at
+mode `0600`. The client sends that key as the bearer on every request.
+
+### 3. List and revoke
+
+```sh
+claude-mem server api-key list           # ids, names, prefixes, scopes, status — never the raw key
+claude-mem server api-key revoke <id>    # take id from `list`
 ```
 
 Revocation is enforced on every request because `requirePostgresServerAuth`
 reloads the row by hash on each call. There is no in-memory cache to
-poison.
+poison — a revoked key fails (`401`/`403`) on its next use.
 
 > **Do not enable `CLAUDE_MEM_AUTH_MODE=local-dev` in Docker.** The
 > loopback bypass relies on the request originating from `127.0.0.1` on

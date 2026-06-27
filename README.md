@@ -167,7 +167,7 @@ npx @bjlee2024/claude-mem install --mode server
 **2. Enroll each device** — on the server (where `CLAUDE_MEM_SERVER_DATABASE_URL` reaches Postgres), mint a one-time token using the address other devices can reach (your tailnet IP, **not** `127.0.0.1`):
 
 ```bash
-npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
 ```
 
 **3. On each client device** — redeem the token:
@@ -178,7 +178,8 @@ npx @bjlee2024/claude-mem install --mode client --enroll <token>
 
 Verify connectivity any time with `npx @bjlee2024/claude-mem client status`. Revoke a device with `npx @bjlee2024/claude-mem server api-key revoke`.
 
-→ **Full guide: [Server & Client Modes](docs/public/server-client-modes.mdx)** — Tailscale topology, systemd unit, subscription/Ollama generation, and troubleshooting.
+→ **Detailed step-by-step: [Server & Client Setup Guide](#server--client-setup-guide)** (below) — full server bring-up, client enrollment, env-var reference, and verification.
+→ **Deployment deep-dive: [Server & Client Modes](docs/public/server-client-modes.mdx)** — Tailscale topology, systemd unit, subscription/Ollama generation, and troubleshooting.
 
 > **Note:** `npm install -g @bjlee2024/claude-mem` installs the **SDK/library only** — it does not register the plugin hooks or set up the worker/server. Always install via `npx @bjlee2024/claude-mem install` (optionally `--mode server|client`) or the `/plugin` commands above.
 
@@ -206,6 +207,190 @@ The installer handles dependencies, plugin setup, AI provider configuration, wor
 - 🤖 **Automatic Operation** - No manual intervention required
 - 🔗 **Citations** - Reference past observations with IDs (access via http://localhost:37777/api/observation/{id} or view all in the web viewer at http://localhost:37777)
 - 🧪 **Beta Channel** - Try experimental features like Endless Mode via version switching
+
+---
+
+## Server & Client Setup Guide
+
+> **Fork feature.** This is the detailed, step-by-step companion to the short
+> [Quick Start](#server--client-modes--shared-memory-across-devices) above. It walks through standing up the **server** (Part A)
+> and connecting one or more **remote clients** (Part B). For deployment
+> specifics — Tailscale ACLs, systemd, subscription/Ollama generation — see the
+> [Server & Client Modes](docs/public/server-client-modes.mdx) deep-dive and the operator notes in [`docs/server.md`](docs/server.md).
+
+**How it fits together:** one server holds all memory in Postgres and runs
+generation; each thin client posts its observations to the server and pulls
+context back. Clients carry **no model, no SQLite, no Chroma, and no provider
+key** — only a server URL and an API key. Keep the server on a **trusted
+network** (e.g. Tailscale); API-key auth is the only boundary.
+
+```
+[laptop]   claude-mem (client) ─┐
+[desktop]  claude-mem (client) ─┼─ Tailscale/HTTP → [server] Postgres + Valkey + worker (generation)
+[server]   (local client)      ─┘
+```
+
+### Part A — Server installation & setup
+
+Do this once, on the box that will hold memory.
+
+**A1. Prerequisites**
+
+- **Docker + Docker Compose** on the server box.
+- A network address other devices can reach (a **tailnet IP** like `100.x.y.z`, *not* `127.0.0.1`).
+- A **generation provider** for the worker — one of: a metered `ANTHROPIC_API_KEY`, a Claude subscription OAuth token, or a local Ollama/vLLM model. (Without one the server still ingests events but produces no summaries.)
+
+**A2. Get the compose files**
+
+The Docker Compose stack ships in the **repo**, not the npm package — clone it on the server:
+
+```bash
+git clone https://github.com/bjlee2024/claude-mem.git
+cd claude-mem
+```
+
+**A3. Configure secrets (`.env`)**
+
+`docker-compose.yml` requires Postgres credentials and the server-beta env vars — **no defaults**, so the stack refuses to start without them. Create a `.env` next to the compose file:
+
+```bash
+# .env  (server box only — never commit this)
+POSTGRES_USER=claudemem
+POSTGRES_PASSWORD=<a-strong-password>
+POSTGRES_DB=claudemem
+
+CLAUDE_MEM_SERVER_DATABASE_URL=postgres://claudemem:<a-strong-password>@postgres:5432/claudemem
+CLAUDE_MEM_REDIS_URL=redis://valkey:6379
+CLAUDE_MEM_AUTH_MODE=api-key          # required; local-dev is REJECTED in Docker
+
+# Generation provider (pick ONE — see step A7):
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**A4. Bring up the stack**
+
+```bash
+docker compose up -d --build
+```
+
+This starts four services: `postgres` (canonical storage), `valkey` (BullMQ queue), `claude-mem-server` (HTTP), and `claude-mem-worker` (generation). The schema is bootstrapped automatically on first start.
+
+**A5. Health check**
+
+```bash
+curl http://127.0.0.1:37877/healthz
+```
+
+**A6. Register the runtime & provision the first API key**
+
+On the server host, point `CLAUDE_MEM_SERVER_DATABASE_URL` at the running Postgres (publish the port, or use the container IP), then configure this box as a server — and, by default, a local client that captures its own work too:
+
+```bash
+npx @bjlee2024/claude-mem install --mode server
+```
+
+This writes `CLAUDE_MEM_RUNTIME=server-beta`, points the IDE MCP config at the server, and — when the database is reachable — bootstraps a hook API key automatically. To run a **pure backend** with no local capture, add `--no-local-client`. If the database wasn't reachable at install time, provision the key afterward with:
+
+```bash
+npx @bjlee2024/claude-mem server keys rotate
+```
+
+> **Database access for CLI commands.** `server enroll`, `api-key …`, and `keys rotate` talk to Postgres directly — run them where `CLAUDE_MEM_SERVER_DATABASE_URL` resolves. If Postgres isn't published to the host, target the container's address:
+> ```bash
+> PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' claude-mem-postgres-1)
+> CLAUDE_MEM_SERVER_DATABASE_URL="postgres://claudemem:<pw>@$PG_IP:5432/claudemem" \
+>   npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+> ```
+
+**A7. Choose a generation backend**
+
+The worker needs exactly one provider:
+
+| Backend | How | Cost |
+|---|---|---|
+| **API key** (default) | `ANTHROPIC_API_KEY=sk-ant-...` in `.env` | Metered per token |
+| **Claude subscription** | `claude setup-token` → `CLAUDE_MEM_SERVER_PROVIDER=subscription` + `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...` | Flat (subscription) |
+| **Local model (Ollama)** | `CLAUDE_MEM_SERVER_PROVIDER=openrouter` + a local OpenAI-compatible endpoint | Free / offline |
+
+Subscription and Ollama walkthroughs (token refresh, firewall, model choice) are in the [deep-dive](docs/public/server-client-modes.mdx#generation-with-a-subscription-no-api-cost).
+
+**A8. Keep it always-on (optional)**
+
+Register the stack as a systemd service so it survives reboots — see the [systemd unit](docs/public/server-client-modes.mdx#keep-it-always-on-systemd) in the deep-dive.
+
+### Part B — Remote client installation & setup
+
+Repeat for each device (laptop, desktop, …).
+
+**B1. Prerequisites**
+
+- Network reachability to the server (same tailnet). No Docker, no provider key, no database needed on the client.
+
+**B2. Mint an enrollment token (on the server)**
+
+Run on the server host, using the address the client can actually reach:
+
+```bash
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+```
+
+It prints a one-line token bundling the **server URL** and a **team-scoped API key** (read + write, no fixed project). It is shown **once** — only a hash is stored server-side, so if you lose it just re-enroll. Use a distinct `--label` per device so you can revoke one without touching the others. Treat the token like a password.
+
+**B3. Install the client (on the device)**
+
+```bash
+npx @bjlee2024/claude-mem install --mode client --enroll <token>
+```
+
+Or skip the token and pass the pieces directly:
+
+```bash
+npx @bjlee2024/claude-mem install --mode client \
+  --server-url http://100.x.y.z:37877 \
+  --token <raw-api-key>
+```
+
+This writes `CLAUDE_MEM_SERVER_BETA_URL` + `CLAUDE_MEM_SERVER_BETA_API_KEY` to `~/.claude-mem` (mode `0600`), installs the IDE hooks, and **skips** the local worker/SQLite/Chroma and the provider-key prompt. A failed reachability check is a warning, not a failure — you can enroll an offline laptop and it syncs later.
+
+**B4. Verify**
+
+```bash
+npx @bjlee2024/claude-mem client status
+```
+
+```json
+{ "runtime": "client", "server": "http://100.x.y.z:37877", "reachable": true, "spoolDepth": 0 }
+```
+
+- `reachable: true` — the server answered `/v1/info`.
+- `spoolDepth: 0` — nothing is queued offline (writes spool to `~/.claude-mem/spool/pending.ndjson` when the server is down, and flush automatically on reconnect — replays are de-duplicated, so nothing doubles).
+
+**B5. Per-repo isolation (leave `PROJECT_ID` unset)**
+
+In client mode `CLAUDE_MEM_SERVER_BETA_PROJECT_ID` is **optional and normally left blank** — the client maps each repository to its own server project by name (cached in `~/.claude-mem/project-map.json`), giving the same isolation local mode provides. Only set a fixed `PROJECT_ID` if you deliberately want **every** repo on that device pinned to one project.
+
+**B6. Revoke a device**
+
+```bash
+npx @bjlee2024/claude-mem server api-key list      # find the device's key id (raw keys are never shown)
+npx @bjlee2024/claude-mem server api-key revoke <id>
+```
+
+Revocation takes effect on that key's next request (`401`/`403`); other devices are unaffected.
+
+### Required environment variables
+
+| Variable | Server | Client | Notes |
+|---|:---:|:---:|---|
+| `CLAUDE_MEM_RUNTIME` | `server-beta` | `client` | Set by `install --mode server|client`. |
+| `CLAUDE_MEM_SERVER_DATABASE_URL` | ✅ | — | Postgres DSN. Fails fast at startup if missing. |
+| `CLAUDE_MEM_REDIS_URL` | ✅ | — | Valkey/Redis for BullMQ. |
+| `CLAUDE_MEM_AUTH_MODE` | ✅ `api-key` | — | Must **not** be `local-dev` in Docker. |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | ✅ | — | Compose secrets — no defaults. |
+| Provider key (`ANTHROPIC_API_KEY` or alt) | ✅ (worker) | — | Required for the chosen generation backend. |
+| `CLAUDE_MEM_SERVER_BETA_URL` | — | ✅ | The address the client posts to. |
+| `CLAUDE_MEM_SERVER_BETA_API_KEY` | — | ✅ | Bearer key from enrollment. |
+| `CLAUDE_MEM_SERVER_BETA_PROJECT_ID` | — | ⬜ optional | Leave unset for per-repo isolation (recommended). |
 
 ---
 
