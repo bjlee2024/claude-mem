@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.4.23] - 2026-06-27
+
+Fork release rolling up this session's work (PRs #1–6).
+
+### Features
+- **Enroll-based per-worker mTLS for Valkey** — `server ca init`, `server worker-enroll`, `POST /v1/worker-certs`; short-lived, auto-renewed per-worker client certs (no private key ever shipped).
+- **Ported upstream worker-restart hardening (#2894)** — single-source-of-truth restart, spawn gate, verified restarts, graceful shutdown.
+- **Instrument-only telemetry** — local-sink shim (no network egress, no posthog-node).
+
+### Fixes
+- **Postgres jsonb**: sanitize lone UTF-16 surrogates so tool output truncated mid-character no longer crashes the agent_events insert.
+- **Postgres URL parsing**: handle special characters (e.g. `@`) in the DB password (discrete-field parsing).
+- **server-beta generation worker**: fix a Bun crash-loop where the worker exited ~30s after start (event loop emptied; added an explicit keep-alive).
+
+### Chore
+- Track `docker-compose.my.yml` + `.env` (secrets external) for the local server-beta stack.
+
+## [13.4.22] - 2026-06-09
+
+## Server-side Token Economics + maintenance batch
+
+### Token Economics (server-beta)
+The timeline-report "Token Economics & Memory ROI" section now works in client/server mode.
+- New additive `observations.generation_tokens` column (schema v2, auto-migrates on startup, no backfill).
+- Capture: provider token usage (already reported by Claude/Gemini/OpenRouter/Ollama) is now persisted per observation.
+- `POST /v1/token-economics` (total + per-month + top-cost) + `ServerBetaClient.tokenEconomics` + `npx @bjlee2024/claude-mem token-economics`.
+- timeline-report renders section 8 from it (caveat: only observations generated since this release carry cost).
+
+### Also in this release
+- **knowledge-agent** works in server/client mode via a `search`-based in-conversation brain (corpus tools stay worker-only).
+- **i18n READMEs** (32 languages) gained a fork install notice (npm + server/client setup).
+- **Generation** pinned to `llama3.1:8b` with an English-only observation prompt (no more stray Chinese).
+- **CHANGELOG** generator now targets the fork repo.
+- **Tests**: `.env` isolation for SettingsDefaultsManager; restored leaked ModeManager mocks (full-suite failures 13→1); e2e/integration teardown to stop junk-project accumulation.
+- **Deps**: agent-sdk 0.2→0.3, @types/node, @types/react, ioredis.
+
 ## [13.4.21] - 2026-06-08
 
 ## Project resolution parity (client/server = worker)
