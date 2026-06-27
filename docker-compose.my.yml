@@ -1,0 +1,163 @@
+# Phase 10 — server-beta deployable runtime (personal stack).
+#
+# NOTE: This file was reconstructed from the running containers (docker inspect)
+# after the original was lost, and is now tracked in git (removed from
+# .gitignore) so it cannot vanish again.
+#
+# Stack: Postgres (canonical storage) + Valkey (BullMQ queue) +
+#        claude-mem-server (HTTP, no generation) +
+#        claude-mem-worker (BullMQ generation consumer; uses local Ollama).
+#
+# The legacy worker-service.cjs runtime is NEVER spawned in this stack:
+# claude-mem-server runs server-beta-service.cjs --daemon (via entrypoint mode
+# `server`); claude-mem-worker runs server-beta-service.cjs worker start (mode
+# `worker`). Scale generation via: docker compose up -d --scale claude-mem-worker=N
+#
+# REDEPLOYING AFTER A CODE CHANGE: do NOT use `npm run worker:restart` (it targets
+# a local worker and the dockerized server rejects the cross-boundary admin POST
+# with 403). Rebuild + recreate instead:
+#   npm run build
+#   docker compose -f docker-compose.my.yml build
+#   docker compose -f docker-compose.my.yml up -d
+#
+# Secrets default to dev values; override with a .env file or inline env.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 12
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    # BullMQ requires noeviction; AOF gives durability across restarts.
+    # mTLS: plaintext port disabled (--port 0); TLS-only on 6379 with mandatory
+    # client-cert auth (--tls-auth-clients yes). Certs mounted read-only at /tls.
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+      - --port
+      - "0"
+      - --tls-port
+      - "6379"
+      - --tls-cert-file
+      - /tls/valkey.crt
+      - --tls-key-file
+      - /tls/valkey.key
+      - --tls-ca-cert-file
+      - /tls/ca.crt
+      - --tls-auth-clients
+      - "yes"
+    volumes:
+      - valkey-data:/data
+      - ./.docker-tls:/tls:ro
+    healthcheck:
+      test: ["CMD", "valkey-cli", "--tls", "--cert", "/tls/client.crt", "--key", "/tls/client.key", "--cacert", "/tls/ca.crt", "--insecure", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  claude-mem-server:
+    build:
+      context: .
+      dockerfile: docker/claude-mem/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      CLAUDE_MEM_CONTAINER_MODE: server
+      CLAUDE_MEM_RUNTIME: server-beta
+      CLAUDE_MEM_AUTH_MODE: api-key
+      CLAUDE_MEM_SERVER_HOST: 0.0.0.0
+      CLAUDE_MEM_HOST: 0.0.0.0
+      CLAUDE_MEM_SERVER_PORT: "37700"
+      CLAUDE_MEM_WORKER_PORT: "37700"
+      CLAUDE_MEM_WORKER_HOST: 0.0.0.0
+      CLAUDE_MEM_QUEUE_ENGINE: bullmq
+      CLAUDE_MEM_REDIS_MODE: docker
+      CLAUDE_MEM_REDIS_URL: ${CLAUDE_MEM_REDIS_URL:-rediss://valkey:6379}
+      # mTLS to Valkey: present this client cert + verify against the CA (read from /tls).
+      CLAUDE_MEM_REDIS_TLS_CA_FILE: /tls/ca.crt
+      CLAUDE_MEM_REDIS_TLS_CERT_FILE: /tls/client.crt
+      CLAUDE_MEM_REDIS_TLS_KEY_FILE: /tls/client.key
+      # CA signer so this server can issue certs to future REMOTE workers via POST /v1/worker-certs.
+      CLAUDE_MEM_CA_CERT_FILE: /tls/ca.crt
+      CLAUDE_MEM_CA_KEY_FILE: /tls/ca.key
+      CLAUDE_MEM_SERVER_DATABASE_URL: ${CLAUDE_MEM_SERVER_DATABASE_URL:?CLAUDE_MEM_SERVER_DATABASE_URL is required (password URL-encoded)}
+      CLAUDE_MEM_GENERATION_DISABLED: "true"
+      CLAUDE_MEM_CHROMA_ENABLED: "false"
+      CLAUDE_MEM_DOCKER: "1"
+      CLAUDE_MEM_DATA_DIR: /data/claude-mem
+    ports:
+      - "37700:37700"
+    volumes:
+      - claude-mem-data:/data/claude-mem
+      - ./.docker-tls:/tls:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:37700/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+
+  claude-mem-worker:
+    build:
+      context: .
+      dockerfile: docker/claude-mem/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      claude-mem-server:
+        condition: service_healthy
+    environment:
+      CLAUDE_MEM_CONTAINER_MODE: worker
+      CLAUDE_MEM_RUNTIME: server-beta
+      CLAUDE_MEM_AUTH_MODE: api-key
+      CLAUDE_MEM_QUEUE_ENGINE: bullmq
+      CLAUDE_MEM_REDIS_MODE: docker
+      CLAUDE_MEM_REDIS_URL: ${CLAUDE_MEM_REDIS_URL:-rediss://valkey:6379}
+      # mTLS to Valkey: present this client cert + verify against the CA (read from /tls).
+      CLAUDE_MEM_REDIS_TLS_CA_FILE: /tls/ca.crt
+      CLAUDE_MEM_REDIS_TLS_CERT_FILE: /tls/client.crt
+      CLAUDE_MEM_REDIS_TLS_KEY_FILE: /tls/client.key
+      CLAUDE_MEM_SERVER_DATABASE_URL: ${CLAUDE_MEM_SERVER_DATABASE_URL:?CLAUDE_MEM_SERVER_DATABASE_URL is required (password URL-encoded)}
+      CLAUDE_MEM_CHROMA_ENABLED: "false"
+      CLAUDE_MEM_DOCKER: "1"
+      CLAUDE_MEM_DATA_DIR: /data/claude-mem
+      # Generation provider: local Ollama via the OpenAI-compatible endpoint.
+      CLAUDE_MEM_SERVER_PROVIDER: openrouter
+      CLAUDE_MEM_OPENROUTER_BASE_URL: ${CLAUDE_MEM_OPENROUTER_BASE_URL:-http://host.docker.internal:11434/v1}
+      CLAUDE_MEM_SERVER_MODEL: ${CLAUDE_MEM_SERVER_MODEL:-llama3.1:8b}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_MEM_ANTHROPIC_API_KEY: ${CLAUDE_MEM_ANTHROPIC_API_KEY:-}
+    volumes:
+      - claude-mem-data:/data/claude-mem
+      - ./.docker-tls:/tls:ro
+
+volumes:
+  postgres-data:
+  valkey-data:
+  claude-mem-data:
