@@ -4,7 +4,6 @@ node_modules/
 **/_tree-sitter/
 *.log
 .DS_Store
-.env
 .env.local
 *.tmp
 *.temp
@@ -55,4 +54,4 @@ docker/install-test/
 reports/
 
 # Local deploy compose (contains local credentials/defaults — keep out of the repo)
-docker-compose.my.yml
+.docker-tls/
