@@ -32,6 +32,19 @@ npm run build-and-sync        # Build, sync to marketplace, restart worker
 
 No need to edit the changelog ever, it's generated automatically.
 
+## Documentation Language
+
+Write all documentation in Korean (한글). This applies to new docs and to edits
+of existing docs (`docs/**`, in-repo guides, and prose sections you add to the
+main `README.md`).
+
+- Exception: the main `README.md` is English-first with per-language translations
+  under `docs/i18n/` — do not convert the whole file to Korean. Korean prose
+  belongs in `docs/i18n/README.ko.md` (and any new sections you author may be
+  written in Korean per the user's request).
+- Keep code identifiers, env var names, CLI commands, and file paths in their
+  original form; translate only the surrounding prose.
+
 ## Daily Maintenance
 
 Run a daily version check across all package manifests and upgrade every dependency to its latest version — including major version bumps. Staying on the latest is the goal; do not skip majors.
