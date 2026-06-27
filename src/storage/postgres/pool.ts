@@ -12,7 +12,11 @@ let sharedPool: PostgresPool | null = null;
 
 export function createPostgresPool(config: PostgresConfig): PostgresPool {
   return new Pool({
-    connectionString: config.connectionString,
+    host: config.connection.host,
+    port: config.connection.port,
+    user: config.connection.user,
+    password: config.connection.password,
+    database: config.connection.database,
     max: config.max,
     idleTimeoutMillis: config.idleTimeoutMillis,
     connectionTimeoutMillis: config.connectionTimeoutMillis,
