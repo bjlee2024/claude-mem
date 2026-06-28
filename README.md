@@ -167,7 +167,7 @@ npx @bjlee2024/claude-mem install --mode server
 **2. Enroll each device** — on the server (where `CLAUDE_MEM_SERVER_DATABASE_URL` reaches Postgres), mint a one-time token using the address other devices can reach (your tailnet IP, **not** `127.0.0.1`):
 
 ```bash
-npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
 ```
 
 **3. On each client device** — redeem the token:
@@ -270,8 +270,10 @@ docker compose up -d --build
 **A5. 헬스 체크**
 
 ```bash
-curl http://127.0.0.1:37877/healthz
+curl http://127.0.0.1:37700/healthz
 ```
+
+> 이 가이드의 예시 포트는 `37700`입니다. 포트는 compose 파일의 `CLAUDE_MEM_SERVER_PORT`/`ports` 값과 일치해야 합니다 — 표준 `docker-compose.yml`은 `37877`을 사용하므로, 그 파일을 그대로 쓴다면 예시의 `37700`을 `37877`로 바꿔 읽으세요.
 
 **A6. 런타임 등록 및 첫 API 키 발급**
 
@@ -291,7 +293,7 @@ npx @bjlee2024/claude-mem server keys rotate
 > ```bash
 > PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' claude-mem-postgres-1)
 > CLAUDE_MEM_SERVER_DATABASE_URL="postgres://claudemem:<pw>@$PG_IP:5432/claudemem" \
->   npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+>   npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
 > ```
 
 **A7. Generation 백엔드 선택**
@@ -323,7 +325,7 @@ worker에는 정확히 하나의 provider가 필요합니다:
 클라이언트가 실제로 접근할 수 있는 주소를 사용해 서버 호스트에서 실행합니다:
 
 ```bash
-npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37700 --label laptop
 ```
 
 **서버 URL**과 **팀 범위(team-scoped) API 키**(읽기+쓰기, 고정 프로젝트 없음)를 묶은 한 줄 토큰이 출력됩니다. 이 토큰은 **한 번만** 표시되며 서버에는 해시만 저장되므로, 분실하면 다시 enroll 하면 됩니다. 디바이스별로 서로 다른 `--label`을 사용하면 다른 디바이스를 건드리지 않고 특정 디바이스만 폐기할 수 있습니다. 토큰은 비밀번호처럼 취급하세요.
@@ -338,7 +340,7 @@ npx @bjlee2024/claude-mem install --mode client --enroll <token>
 
 ```bash
 npx @bjlee2024/claude-mem install --mode client \
-  --server-url http://100.x.y.z:37877 \
+  --server-url http://100.x.y.z:37700 \
   --token <raw-api-key>
 ```
 
@@ -351,7 +353,7 @@ npx @bjlee2024/claude-mem client status
 ```
 
 ```json
-{ "runtime": "client", "server": "http://100.x.y.z:37877", "reachable": true, "spoolDepth": 0 }
+{ "runtime": "client", "server": "http://100.x.y.z:37700", "reachable": true, "spoolDepth": 0 }
 ```
 
 - `reachable: true` — 서버가 `/v1/info`에 응답함.

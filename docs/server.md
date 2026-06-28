@@ -166,7 +166,7 @@ JSON이 출력되며, `key` 필드가 **단 한 번만 표시되는 raw 키**입
 Modes](public/server-client-modes.mdx) 참고):
 
 ```sh
-claude-mem server enroll --url http://<server-reachable-host>:37877 --label laptop
+claude-mem server enroll --url http://<server-reachable-host>:37700 --label laptop
 # → npx @bjlee2024/claude-mem install --mode client --enroll <token>
 ```
 
@@ -174,7 +174,7 @@ claude-mem server enroll --url http://<server-reachable-host>:37877 --label lapt
 
 ```sh
 npx @bjlee2024/claude-mem install --mode client \
-  --server-url http://<server-reachable-host>:37877 \
+  --server-url http://<server-reachable-host>:37700 \
   --token <raw-key>
 ```
 
