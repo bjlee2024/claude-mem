@@ -15,6 +15,7 @@ import { checkVersionMatch } from "../services/infrastructure/index.js";
 // ProcessManager imports nothing from worker-utils, so no cycle.
 import { resolveWorkerRuntimePath } from "../services/infrastructure/ProcessManager.js";
 import { acquireSpawnLock, releaseSpawnLock } from "./worker-spawn-gate.js";
+import { selectRuntime } from "../services/hooks/runtime-selector.js";
 
 function readTimeoutEnv(
   envName: string,
@@ -337,6 +338,17 @@ async function isWorkerPortAlive(): Promise<boolean> {
 }
 
 export async function ensureWorkerRunning(): Promise<boolean> {
+  // Client / server-beta runtimes route observations and context through the
+  // remote server and have NO local worker. Never run the worker health /
+  // version-recycle / lazy-spawn path here: when CLAUDE_MEM_WORKER_PORT collides
+  // with a co-located server-beta (same default port), the version check
+  // mistakes the server for a stale worker and POSTs /api/admin/restart in a
+  // loop — which the server rejects as "not localhost". Return false so callers
+  // take their worker-unreachable branch without ever touching the server.
+  if (selectRuntime() !== 'worker') {
+    return false;
+  }
+
   // Installed-plugin version captured when the alive branch runs, so every
   // post-readiness path below can run the one-shot amplifier check
   // (warnIfVersionStillMismatched). Stays null when no worker was alive
@@ -645,6 +657,14 @@ export async function executeWithWorkerFallback<T = unknown>(
   body?: unknown,
   options: WorkerFallbackOptions = {},
 ): Promise<WorkerCallResult<T>> {
+  // Remote runtimes have no local worker — skip the worker call entirely. This
+  // also skips recordWorkerUnreachable(), which would otherwise trip the
+  // fail-loud counter on every hook. The client/server-beta paths handle their
+  // own delivery to the remote server.
+  if (selectRuntime() !== 'worker') {
+    return { continue: true, reason: 'worker_skipped_remote_runtime', [WORKER_FALLBACK_BRAND]: true };
+  }
+
   const alive = await ensureWorkerAliveOnce();
   if (!alive) {
     await recordWorkerUnreachable();
