@@ -63,6 +63,8 @@ class Logger {
   private level: LogLevel | null = null;
   private recentLogs: string[] = [];
   private static readonly MAX_RECENT_LOGS = 5000;
+  private forwardBuffer: string[] = [];
+  private static readonly MAX_FORWARD_BUFFER = 500;
   private useColor: boolean;
   private logFilePath: string | null = null;
   private logFileInitialized: boolean = false;
@@ -109,6 +111,19 @@ class Logger {
       }
     }
     return this.level;
+  }
+
+  private forwardLevelThreshold(): LogLevel {
+    const raw = (process.env.CLAUDE_MEM_LOG_FORWARD_LEVEL ?? 'WARN').toUpperCase();
+    const v = (LogLevel as unknown as Record<string, number>)[raw];
+    return typeof v === 'number' ? (v as LogLevel) : LogLevel.WARN;
+  }
+
+  /** Pull and clear log lines queued for forwarding to the server. */
+  drainForwardBuffer(): string[] {
+    const out = this.forwardBuffer;
+    this.forwardBuffer = [];
+    return out;
   }
 
   correlationId(sessionId: number, observationNum: number): string {
@@ -274,6 +289,15 @@ class Logger {
     this.recentLogs.push(logLine);
     if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
       this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+    }
+
+    // Forward buffer: accumulate lines at or above the forward threshold for
+    // the client runtime to drain and push to the server.
+    if (level >= this.forwardLevelThreshold()) {
+      this.forwardBuffer.push(logLine);
+      if (this.forwardBuffer.length > Logger.MAX_FORWARD_BUFFER) {
+        this.forwardBuffer.splice(0, this.forwardBuffer.length - Logger.MAX_FORWARD_BUFFER);
+      }
     }
 
     if (this.logFilePath) {
