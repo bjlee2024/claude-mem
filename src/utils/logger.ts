@@ -62,7 +62,7 @@ interface LogContext {
 class Logger {
   private level: LogLevel | null = null;
   private recentLogs: string[] = [];
-  private static readonly MAX_RECENT_LOGS = 2000;
+  private static readonly MAX_RECENT_LOGS = 5000;
   private useColor: boolean;
   private logFilePath: string | null = null;
   private logFileInitialized: boolean = false;
@@ -266,7 +266,7 @@ class Logger {
       }
     }
 
-    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] ${correlationStr}${message}${contextStr}${dataStr}`;
+    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] [server] ${correlationStr}${message}${contextStr}${dataStr}`;
 
     // In-memory ring buffer of recent lines. The server-beta runtime logs to
     // stdout (no log file), so its viewer `/api/logs` endpoint reads from here
@@ -299,6 +299,25 @@ class Logger {
   /** Clear the in-memory ring buffer (backs the server-beta viewer's "clear logs"). */
   clearRecentLogs(): void {
     this.recentLogs = [];
+  }
+
+  /** Ingest pre-formatted log lines from another process (worker file tail or
+   *  client push). Lines are stored verbatim into the same ring buffer that
+   *  backs the viewer's /api/logs, tagged so the UI can show their origin. */
+  ingestExternalLogs(lines: string[], source: 'worker' | 'client'): void {
+    const tag = `[${source.padEnd(6)}]`;
+    for (const raw of lines) {
+      if (!raw) continue;
+      // Insert the source tag right after the [COMPONENT] field if the line
+      // matches the standard format; otherwise store raw with a trailing tag.
+      const tagged = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]/.test(raw) && !raw.includes(`] ${tag}`)
+        ? raw.replace(/^(\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]) /, `$1 ${tag} `)
+        : `${raw} ${tag}`;
+      this.recentLogs.push(tagged);
+    }
+    if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
+      this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+    }
   }
 
   debug(component: Component, message: string, context?: LogContext, data?: any): void {
