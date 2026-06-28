@@ -153,9 +153,18 @@ services:
       CLAUDE_MEM_SERVER_MODEL: ${CLAUDE_MEM_SERVER_MODEL:-llama3.1:8b}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_MEM_ANTHROPIC_API_KEY: ${CLAUDE_MEM_ANTHROPIC_API_KEY:-}
+      # The openrouter provider requires a non-empty API key even though the
+      # local Ollama endpoint ignores it. Without this the provider resolves to
+      # null, buildGenerationWorkerManager() returns the Disabled manager, and
+      # the worker never attaches to the BullMQ queues (jobs pile up "queued").
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-ollama}
     volumes:
       - claude-mem-data:/data/claude-mem
       - ./.docker-tls:/tls:ro
+    # Resolve host.docker.internal (CLAUDE_MEM_OPENROUTER_BASE_URL points the
+    # worker at the host's Ollama on :11434).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres-data:
