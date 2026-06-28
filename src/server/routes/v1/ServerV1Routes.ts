@@ -16,6 +16,7 @@ import {
   ServerSessionsRepository,
 } from '../../../storage/sqlite/index.js';
 import { requireServerAuth } from '../../middleware/auth.js';
+import { logger } from '../../../utils/logger.js';
 
 declare const __DEFAULT_PACKAGE_VERSION__: string;
 const BUILT_IN_VERSION = typeof __DEFAULT_PACKAGE_VERSION__ !== 'undefined'
@@ -259,6 +260,14 @@ export class ServerV1Routes implements RouteHandler {
       }
       if (!this.ensureProjectAllowed(req, res, projectId)) return;
       res.json({ audit: new AuthRepository(this.options.getDatabase()).listAuditLogByProject(projectId) });
+    });
+
+    const IngestLogsSchema = z.object({ lines: z.array(z.string()).min(1).max(500) });
+    app.post('/v1/logs/ingest', writeAuth, (req, res) => {
+      const parsed = IngestLogsSchema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid body' }); return; }
+      logger.ingestExternalLogs(parsed.data.lines, 'client');
+      res.status(204).end();
     });
   }
 

@@ -15,6 +15,8 @@ import { GeminiObservationProvider } from '../generation/providers/GeminiObserva
 import { OpenRouterObservationProvider } from '../generation/providers/OpenRouterObservationProvider.js';
 import type { ServerGenerationProvider } from '../generation/providers/shared/types.js';
 import { ServerBetaService } from './ServerBetaService.js';
+import { WorkerLogCollector } from './WorkerLogCollector.js';
+import { join } from 'path';
 import {
   DisabledServerBetaEventBroadcaster,
   DisabledServerBetaGenerationWorkerManager,
@@ -193,6 +195,18 @@ export async function createServerBetaService(
           'CLAUDE_MEM_GENERATION_DISABLED is set; this server runs HTTP only. A separate `claude-mem server worker start` process consumes the BullMQ queues.',
         )
       : buildGenerationWorkerManager(pool, queueManager, options.generationProvider));
+  // HTTP-only mode: start the WorkerLogCollector so that log lines written by
+  // the separate generation-worker process are tailed and surfaced in the
+  // viewer's /api/logs console. When generation runs in-process
+  // (generationDisabled=false), there are no separate worker log files, so the
+  // collector is not started.
+  let workerLogCollector: WorkerLogCollector | undefined;
+  if (generationDisabled) {
+    const logDir = join(process.env.CLAUDE_MEM_DATA_DIR ?? '/data/claude-mem', 'logs');
+    workerLogCollector = new WorkerLogCollector({ logDir });
+    workerLogCollector.start();
+  }
+
   const graph: ServerBetaServiceGraph = {
     runtime: 'server-beta',
     postgres: {
@@ -205,6 +219,7 @@ export async function createServerBetaService(
     providerRegistry: new DisabledServerBetaProviderRegistry('Phase 5 keeps the provider registry boundary as inert; per-call providers are owned by the generation worker manager.'),
     eventBroadcaster: new DisabledServerBetaEventBroadcaster('Phase 2 boundary only; SSE/event broadcasting is not wired.'),
     storage: createPostgresStorageRepositories(pool),
+    workerLogCollector,
   };
 
   if (generationWorkerManager instanceof ActiveServerBetaGenerationWorkerManager) {
