@@ -252,6 +252,12 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'project': {
+      const { runProjectCommand } = await import('./commands/project.js');
+      await runProjectCommand(args.slice(1));
+      break;
+    }
+
     default: {
       console.error(pc.red(`Unknown command: ${command}`));
       console.error(`Run ${pc.bold('npx @bjlee2024/claude-mem --help')} for usage information.`);
