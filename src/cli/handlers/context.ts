@@ -124,12 +124,16 @@ export const contextHandler: EventHandler = {
           ? renderContextFromObservations(projectName, observations, cwd, true, summaries)
           : undefined;
 
+        const pending = logger.drainForwardBuffer();
+        if (pending.length) { await client.forwardLogs(pending); }
         return {
           hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
           ...(systemMessage !== undefined ? { systemMessage } : {}),
           exitCode: HOOK_EXIT_CODES.SUCCESS,
         };
       } catch {
+        const pending = logger.drainForwardBuffer();
+        if (pending.length) { await client.forwardLogs(pending); }
         return emptyResult;
       }
     }

@@ -260,6 +260,7 @@ export class ServerBetaService {
         }
         this.server = null;
       }
+      this.graph.workerLogCollector?.stop();
       await Promise.all([
         this.graph.queueManager.close(),
         this.graph.generationWorkerManager.close(),

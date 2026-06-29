@@ -126,6 +126,7 @@ const clientStub = {
     contextObservationsCalls.push(input);
     return contextObservationsImpl();
   },
+  forwardLogs: (_lines: string[]) => Promise.resolve(),
 };
 
 const clientRuntimeContext = {
@@ -163,6 +164,7 @@ import { HOOK_EXIT_CODES } from '../../../src/shared/hook-constants.js';
 let loggerSpies: ReturnType<typeof spyOn>[] = [];
 
 beforeEach(() => {
+  logger.drainForwardBuffer(); // clear any cross-test contamination from other test files
   workerCallLog.length = 0;
   contextObservationsCalls = [];
   flushCalls = [];

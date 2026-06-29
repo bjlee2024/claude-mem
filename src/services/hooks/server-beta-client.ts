@@ -57,6 +57,8 @@ export interface ServerBetaClientConfig {
   serverBaseUrl: string;
   apiKey: string;
   timeoutMs?: number;
+  /** Optional fetch implementation — used in tests to stub the network. */
+  fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 export interface ServerBetaStartSessionRequest {
@@ -235,11 +237,13 @@ export class ServerBetaClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
 
   constructor(config: ServerBetaClientConfig) {
     this.baseUrl = stripTrailingSlash(config.serverBaseUrl);
     this.apiKey = config.apiKey;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.fetchImpl = config.fetchImpl;
   }
 
   async startSession(input: ServerBetaStartSessionRequest): Promise<ServerBetaStartSessionResponse> {
@@ -320,6 +324,16 @@ export class ServerBetaClient {
     const body: Record<string, unknown> = { projectId: input.projectId };
     if (input.topLimit !== undefined) body.topLimit = input.topLimit;
     return this.request<ServerBetaTokenEconomicsResponse>('POST', '/v1/token-economics', body);
+  }
+
+  /** Best-effort: push buffered client log lines to the server. Never throws. */
+  async forwardLogs(lines: string[]): Promise<void> {
+    if (!lines.length) return;
+    try {
+      await this.request('POST', '/v1/logs/ingest', { lines: lines.slice(0, 500) });
+    } catch {
+      // best-effort: dropping logs must never break the hook
+    }
   }
 
   // Client/server split — resolve-or-create a project by repo name.
@@ -429,7 +443,9 @@ export class ServerBetaClient {
 
     let response: Response;
     try {
-      response = await fetchWithTimeout(url, init, this.timeoutMs);
+      response = this.fetchImpl
+        ? await this.fetchImpl(url, init)
+        : await fetchWithTimeout(url, init, this.timeoutMs);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const isTimeout = /timed out|timeout/i.test(message);

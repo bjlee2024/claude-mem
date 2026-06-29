@@ -74,6 +74,10 @@ export interface ServerBetaServiceGraph {
   providerRegistry: ServerBetaProviderRegistry;
   eventBroadcaster: ServerBetaEventBroadcaster;
   storage: PostgresStorageRepositories;
+  /** HTTP-only mode: tails worker log files and ingests new lines into the
+   *  viewer's log ring buffer. Absent when the generation worker runs in-process
+   *  (no separate log files to tail). */
+  workerLogCollector?: { stop(): void };
 }
 
 abstract class DisabledServerBetaBoundary {

@@ -62,7 +62,9 @@ interface LogContext {
 class Logger {
   private level: LogLevel | null = null;
   private recentLogs: string[] = [];
-  private static readonly MAX_RECENT_LOGS = 2000;
+  private static readonly MAX_RECENT_LOGS = 5000;
+  private forwardBuffer: string[] = [];
+  private static readonly MAX_FORWARD_BUFFER = 500;
   private useColor: boolean;
   private logFilePath: string | null = null;
   private logFileInitialized: boolean = false;
@@ -84,7 +86,9 @@ class Logger {
       }
 
       const date = new Date().toISOString().split('T')[0];
-      this.logFilePath = join(logsDir, `claude-mem-${date}.log`);
+      const isWorker = process.env.CLAUDE_MEM_CONTAINER_MODE === 'worker';
+      const logFileName = isWorker ? `claude-mem-worker-${date}.log` : `claude-mem-${date}.log`;
+      this.logFilePath = join(logsDir, logFileName);
     } catch (error: unknown) {
       console.error('[LOGGER] Failed to initialize log file:', error instanceof Error ? error.message : String(error));
       this.logFilePath = null;
@@ -109,6 +113,19 @@ class Logger {
       }
     }
     return this.level;
+  }
+
+  private forwardLevelThreshold(): LogLevel {
+    const raw = (process.env.CLAUDE_MEM_LOG_FORWARD_LEVEL ?? 'WARN').toUpperCase();
+    const v = (LogLevel as unknown as Record<string, number>)[raw];
+    return typeof v === 'number' ? (v as LogLevel) : LogLevel.WARN;
+  }
+
+  /** Pull and clear log lines queued for forwarding to the server. */
+  drainForwardBuffer(): string[] {
+    const out = this.forwardBuffer;
+    this.forwardBuffer = [];
+    return out;
   }
 
   correlationId(sessionId: number, observationNum: number): string {
@@ -218,6 +235,16 @@ class Logger {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
   }
 
+  /** Derive the source tag for own-process log lines at runtime.
+   *  worker → process.env.CLAUDE_MEM_CONTAINER_MODE === 'worker'
+   *  client → process.env.CLAUDE_MEM_RUNTIME === 'client'
+   *  server → default (main server process or tests with no override) */
+  private get ownSource(): 'worker' | 'client' | 'server' {
+    if (process.env.CLAUDE_MEM_CONTAINER_MODE === 'worker') return 'worker';
+    if (process.env.CLAUDE_MEM_RUNTIME === 'client') return 'client';
+    return 'server';
+  }
+
   private log(
     level: LogLevel,
     component: Component,
@@ -266,7 +293,7 @@ class Logger {
       }
     }
 
-    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] ${correlationStr}${message}${contextStr}${dataStr}`;
+    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] [${this.ownSource.padEnd(6)}] ${correlationStr}${message}${contextStr}${dataStr}`;
 
     // In-memory ring buffer of recent lines. The server-beta runtime logs to
     // stdout (no log file), so its viewer `/api/logs` endpoint reads from here
@@ -274,6 +301,15 @@ class Logger {
     this.recentLogs.push(logLine);
     if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
       this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+    }
+
+    // Forward buffer: accumulate lines at or above the forward threshold for
+    // the client runtime to drain and push to the server.
+    if (level >= this.forwardLevelThreshold()) {
+      this.forwardBuffer.push(logLine);
+      if (this.forwardBuffer.length > Logger.MAX_FORWARD_BUFFER) {
+        this.forwardBuffer.splice(0, this.forwardBuffer.length - Logger.MAX_FORWARD_BUFFER);
+      }
     }
 
     if (this.logFilePath) {
@@ -299,6 +335,36 @@ class Logger {
   /** Clear the in-memory ring buffer (backs the server-beta viewer's "clear logs"). */
   clearRecentLogs(): void {
     this.recentLogs = [];
+  }
+
+  /** Ingest pre-formatted log lines from another process (worker file tail or
+   *  client push). Lines are stored verbatim into the same ring buffer that
+   *  backs the viewer's /api/logs, tagged so the UI can show their origin. */
+  ingestExternalLogs(lines: string[], source: 'worker' | 'client'): void {
+    const tag = `[${source.padEnd(6)}]`;
+    // Matches any known source field at the 4th bracket position so we never
+    // double-tag lines that already carry server|worker|client from the
+    // emitting process (after the ownSource fix each process tags its own lines).
+    const knownSourceRe = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\] \[(server|worker|client)\s*\]/;
+    const threeFieldRe  = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]/;
+    for (const raw of lines) {
+      if (!raw) continue;
+      let tagged: string;
+      if (knownSourceRe.test(raw)) {
+        // Line already carries a known source at position 4 — leave verbatim.
+        tagged = raw;
+      } else if (threeFieldRe.test(raw)) {
+        // Well-formed log line without a source field — insert tag at position 4.
+        tagged = raw.replace(/^(\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]) /, `$1 ${tag} `);
+      } else {
+        // Unstructured line — append tag.
+        tagged = `${raw} ${tag}`;
+      }
+      this.recentLogs.push(tagged);
+    }
+    if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {
+      this.recentLogs.splice(0, this.recentLogs.length - Logger.MAX_RECENT_LOGS);
+    }
   }
 
   debug(component: Component, message: string, context?: LogContext, data?: any): void {

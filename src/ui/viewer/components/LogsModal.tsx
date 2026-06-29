@@ -2,13 +2,22 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { authFetch } from '../utils/api';
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-type LogComponent = 'HOOK' | 'WORKER' | 'SDK' | 'PARSER' | 'DB' | 'SYSTEM' | 'HTTP' | 'SESSION' | 'CHROMA';
+type LogComponent =
+  | 'HOOK' | 'WORKER' | 'SDK' | 'PARSER' | 'DB' | 'SYSTEM' | 'HTTP' | 'SESSION' | 'CHROMA'
+  | 'SECURITY' | 'QUEUE' | 'GIT' | 'ENV' | 'CONFIG' | 'CONSOLE'
+  | 'SEARCH' | 'INGEST' | 'DEDUP' | 'SDK_SPAWN' | 'SETTINGS' | 'SHUTDOWN'
+  | 'PROCESS' | 'BRANCH' | 'TRANSCRIPT' | 'CHROMA_MCP' | 'CHROMA_SYNC' | 'IMPORT'
+  | 'FOLDER_INDEX' | 'PROJECT_NAME' | 'OAUTH' | 'OPENCLAW' | 'OPENCODE'
+  | 'CURSOR' | 'WINDSURF' | 'TELEGRAM' | 'AGENTS_MD' | 'CLAUDE_MD';
+
+type LogSource = 'server' | 'worker' | 'client';
 
 interface ParsedLogLine {
   raw: string;
   timestamp?: string;
   level?: LogLevel;
   component?: LogComponent;
+  source?: LogSource;
   correlationId?: string;
   message?: string;
   isSpecial?: 'dataIn' | 'dataOut' | 'success' | 'failure' | 'timing' | 'happyPath';
@@ -31,17 +40,60 @@ const LOG_COMPONENTS: { key: LogComponent; label: string; icon: string; color: s
   { key: 'HTTP', label: 'HTTP', icon: '🌐', color: '#39d353' },
   { key: 'SESSION', label: 'Session', icon: '📋', color: '#db61a2' },
   { key: 'CHROMA', label: 'Chroma', icon: '🔮', color: '#a855f7' },
+  { key: 'SECURITY', label: 'Security', icon: '🔒', color: '#ef4444' },
+  { key: 'QUEUE', label: 'Queue', icon: '📊', color: '#3b82f6' },
+  { key: 'GIT', label: 'Git', icon: '🌿', color: '#22c55e' },
+  { key: 'ENV', label: 'Env', icon: '🌍', color: '#14b8a6' },
+  { key: 'CONFIG', label: 'Config', icon: '🔧', color: '#94a3b8' },
+  { key: 'CONSOLE', label: 'Console', icon: '🖥️', color: '#6b7280' },
+  { key: 'SEARCH', label: 'Search', icon: '🔎', color: '#8b5cf6' },
+  { key: 'INGEST', label: 'Ingest', icon: '📥', color: '#f59e0b' },
+  { key: 'DEDUP', label: 'Dedup', icon: '🔄', color: '#06b6d4' },
+  { key: 'SDK_SPAWN', label: 'SDK Spawn', icon: '🚀', color: '#10b981' },
+  { key: 'SETTINGS', label: 'Settings', icon: '🛠️', color: '#64748b' },
+  { key: 'SHUTDOWN', label: 'Shutdown', icon: '🛑', color: '#dc2626' },
+  { key: 'PROCESS', label: 'Process', icon: '🔢', color: '#0ea5e9' },
+  { key: 'BRANCH', label: 'Branch', icon: '🌱', color: '#16a34a' },
+  { key: 'TRANSCRIPT', label: 'Transcript', icon: '📝', color: '#60a5fa' },
+  { key: 'CHROMA_MCP', label: 'Chroma MCP', icon: '🔮', color: '#c084fc' },
+  { key: 'CHROMA_SYNC', label: 'Chroma Sync', icon: '🔁', color: '#d8b4fe' },
+  { key: 'IMPORT', label: 'Import', icon: '📂', color: '#fbbf24' },
+  { key: 'FOLDER_INDEX', label: 'Folder Idx', icon: '📁', color: '#f59e0b' },
+  { key: 'PROJECT_NAME', label: 'Project', icon: '📌', color: '#ec4899' },
+  { key: 'OAUTH', label: 'OAuth', icon: '🔑', color: '#fb923c' },
+  { key: 'OPENCLAW', label: 'OpenClaw', icon: '🦞', color: '#ef4444' },
+  { key: 'OPENCODE', label: 'OpenCode', icon: '🖱️', color: '#3b82f6' },
+  { key: 'CURSOR', label: 'Cursor', icon: '✏️', color: '#7c3aed' },
+  { key: 'WINDSURF', label: 'Windsurf', icon: '🏄', color: '#38bdf8' },
+  { key: 'TELEGRAM', label: 'Telegram', icon: '📱', color: '#0ea5e9' },
+  { key: 'AGENTS_MD', label: 'Agents MD', icon: '🤖', color: '#94a3b8' },
+  { key: 'CLAUDE_MD', label: 'Claude MD', icon: '🧠', color: '#78716c' },
 ];
 
-function parseLogLine(line: string): ParsedLogLine {
-  const pattern = /^\[([^\]]+)\]\s+\[(\w+)\s*\]\s+\[(\w+)\s*\]\s+(?:\[([^\]]+)\]\s+)?(.*)$/;
+const LOG_SOURCES: { key: LogSource; label: string; icon: string; color: string }[] = [
+  { key: 'server', label: 'Server', icon: '🖧', color: '#f0883e' },
+  { key: 'worker', label: 'Worker', icon: '⚙️', color: '#58a6ff' },
+  { key: 'client', label: 'Client', icon: '💻', color: '#3fb950' },
+];
+
+const KNOWN_SOURCES = new Set<LogSource>(['server', 'worker', 'client']);
+
+export function parseLogLine(line: string): ParsedLogLine {
+  // Group 4 captures an optional source tag ([a-z]+ only, no hyphens) so that
+  // correlation IDs like obs-X-Y or session-X are never mistaken for a source.
+  const pattern = /^\[([^\]]+)\]\s+\[(\w+)\s*\]\s+\[(\w+)\s*\]\s+(?:\[([a-z]+)\s*\]\s+)?(?:\[([^\]]+)\]\s+)?(.*)$/;
   const match = line.match(pattern);
 
   if (!match) {
     return { raw: line };
   }
 
-  const [, timestamp, level, component, correlationId, message] = match;
+  const [, timestamp, level, component, maybeSource, correlationId, message] = match;
+
+  const source =
+    maybeSource && KNOWN_SOURCES.has(maybeSource as LogSource)
+      ? (maybeSource as LogSource)
+      : undefined;
 
   let isSpecial: ParsedLogLine['isSpecial'] = undefined;
   if (message.startsWith('→')) isSpecial = 'dataIn';
@@ -56,6 +108,7 @@ function parseLogLine(line: string): ParsedLogLine {
     timestamp,
     level: level?.trim() as LogLevel,
     component: component?.trim() as LogComponent,
+    source,
     correlationId: correlationId || undefined,
     message,
     isSpecial,
@@ -83,7 +136,10 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
     new Set(['DEBUG', 'INFO', 'WARN', 'ERROR'])
   );
   const [activeComponents, setActiveComponents] = useState<Set<LogComponent>>(
-    new Set(['HOOK', 'WORKER', 'SDK', 'PARSER', 'DB', 'SYSTEM', 'HTTP', 'SESSION', 'CHROMA'])
+    new Set(LOG_COMPONENTS.map(c => c.key))
+  );
+  const [activeSources, setActiveSources] = useState<Set<LogSource>>(
+    new Set(LOG_SOURCES.map(s => s.key))
   );
   const [alignmentOnly, setAlignmentOnly] = useState(false);
 
@@ -98,9 +154,13 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
         return line.raw.includes('[ALIGNMENT]');
       }
       if (!line.level || !line.component) return true;
-      return activeLevels.has(line.level) && activeComponents.has(line.component);
+      return (
+        activeLevels.has(line.level) &&
+        activeComponents.has(line.component) &&
+        (!line.source || activeSources.has(line.source))
+      );
     });
-  }, [parsedLines, activeLevels, activeComponents, alignmentOnly]);
+  }, [parsedLines, activeLevels, activeComponents, activeSources, alignmentOnly]);
 
   const checkIfAtBottom = useCallback(() => {
     if (!contentRef.current) return true;
@@ -235,9 +295,29 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
 
   const setAllComponents = useCallback((enabled: boolean) => {
     if (enabled) {
-      setActiveComponents(new Set(['HOOK', 'WORKER', 'SDK', 'PARSER', 'DB', 'SYSTEM', 'HTTP', 'SESSION', 'CHROMA']));
+      setActiveComponents(new Set(LOG_COMPONENTS.map(c => c.key)));
     } else {
       setActiveComponents(new Set());
+    }
+  }, []);
+
+  const toggleSource = useCallback((source: LogSource) => {
+    setActiveSources(prev => {
+      const next = new Set(prev);
+      if (next.has(source)) {
+        next.delete(source);
+      } else {
+        next.add(source);
+      }
+      return next;
+    });
+  }, []);
+
+  const setAllSources = useCallback((enabled: boolean) => {
+    if (enabled) {
+      setActiveSources(new Set(LOG_SOURCES.map(s => s.key)));
+    } else {
+      setActiveSources(new Set());
     }
   }, []);
 
@@ -296,12 +376,25 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
           [{componentConfig?.icon || ''} {line.component?.padEnd(7)}]
         </span>
         {' '}
-        {line.correlationId && (
+        {line.source && (
           <>
-            <span className="log-correlation">[{line.correlationId}]</span>
             {' '}
+            <span
+              className="log-source"
+              style={{ color: LOG_SOURCES.find(s => s.key === line.source)?.color, opacity: 0.8 }}
+              title={`source: ${line.source}`}
+            >
+              [{line.source}]
+            </span>
           </>
         )}
+        {line.correlationId && (
+          <>
+            {' '}
+            <span className="log-correlation">[{line.correlationId}]</span>
+          </>
+        )}
+        {' '}
         <span className="log-message">{line.message}</span>
       </div>
     );
@@ -429,6 +522,31 @@ export function LogsDrawer({ isOpen, onClose }: LogsDrawerProps) {
               title={activeComponents.size === LOG_COMPONENTS.length ? 'Select none' : 'Select all'}
             >
               {activeComponents.size === LOG_COMPONENTS.length ? '○' : '●'}
+            </button>
+          </div>
+        </div>
+        <div className="console-filter-section">
+          <span className="console-filter-label">Sources:</span>
+          <div className="console-filter-chips">
+            {LOG_SOURCES.map(src => (
+              <button
+                key={src.key}
+                className={`console-filter-chip ${activeSources.has(src.key) ? 'active' : ''}`}
+                onClick={() => toggleSource(src.key)}
+                style={{
+                  '--chip-color': src.color,
+                } as React.CSSProperties}
+                title={src.label}
+              >
+                {src.icon} {src.label}
+              </button>
+            ))}
+            <button
+              className="console-filter-action"
+              onClick={() => setAllSources(activeSources.size === 0)}
+              title={activeSources.size === LOG_SOURCES.length ? 'Select none' : 'Select all'}
+            >
+              {activeSources.size === LOG_SOURCES.length ? '○' : '●'}
             </button>
           </div>
         </div>
