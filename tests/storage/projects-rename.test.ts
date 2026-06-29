@@ -102,11 +102,16 @@ describe('renameOrMerge', () => {
     const result = await repo.renameOrMerge('team1', 'alpha', 'beta');
     expect(result).toEqual({ id: 'to-id', name: 'beta', merged: true });
 
-    // Transaction wrapping: BEGIN ... COMMIT
+    // Transaction wrapping: BEGIN → SET CONSTRAINTS ALL DEFERRED → ... → COMMIT
     const sqlSeq = c.calls.map((q) => q.sql.trim().toUpperCase());
     expect(sqlSeq).toContain('BEGIN');
+    expect(sqlSeq).toContain('SET CONSTRAINTS ALL DEFERRED');
     expect(sqlSeq).toContain('COMMIT');
     expect(sqlSeq).not.toContain('ROLLBACK');
+    // SET CONSTRAINTS must come immediately after BEGIN
+    const beginIdx = sqlSeq.indexOf('BEGIN');
+    const setConstraintsIdx = sqlSeq.indexOf('SET CONSTRAINTS ALL DEFERRED');
+    expect(setConstraintsIdx).toBe(beginIdx + 1);
 
     // Every referencing table must have received an UPDATE SET project_id
     const refUpdates = c.calls.filter((q) => UPDATE_REF.test(q.sql));
@@ -134,11 +139,12 @@ describe('renameOrMerge', () => {
       { matchSql: SELECT_PROJECT, matchParams: (p) => p[1] === 'src', rows: [{ id: 'src-id' }] },
       { matchSql: SELECT_PROJECT, matchParams: (p) => p[1] === 'dst', rows: [{ id: 'dst-id' }] },
     ]);
-    // Override query to throw on the first reference UPDATE
-    let callCount = 0;
+    // Override query to throw on the first reference UPDATE; capture ALL calls
+    // (including the failing one) in a dedicated array so we can assert ROLLBACK.
+    const queryCalls: { sql: string; params: unknown[] }[] = [];
     const origQuery = c.query.bind(c);
     (c as any).query = async (sql: string, params: unknown[] = []) => {
-      callCount++;
+      queryCalls.push({ sql, params });
       if (UPDATE_REF.test(sql)) {
         throw new Error('simulated DB error');
       }
@@ -148,12 +154,15 @@ describe('renameOrMerge', () => {
     const repo = new PostgresProjectsRepository(c as any);
     await expect(repo.renameOrMerge('team1', 'src', 'dst')).rejects.toThrow('simulated DB error');
 
-    // ROLLBACK must have been issued
-    const sqlSeq = (c as any).calls
-      ? (c as any).calls.map((q: any) => q.sql.trim().toUpperCase())
-      : [];
-    // Since we replaced query above, 'calls' array on c isn't populated by the override.
-    // Verify indirectly that callCount is at least 3 (SELECT x2 + BEGIN + first UPDATE fails).
-    expect(callCount).toBeGreaterThanOrEqual(3);
+    // ROLLBACK must have been issued after the failed UPDATE
+    const sqlSeq = queryCalls.map((q) => q.sql.trim().toUpperCase());
+    expect(sqlSeq).toContain('BEGIN');
+    expect(sqlSeq).toContain('ROLLBACK');
+    expect(sqlSeq).not.toContain('COMMIT');
+    // ROLLBACK must come after the first failing UPDATE
+    const firstUpdateIdx = sqlSeq.findIndex((s) => UPDATE_REF.test(s));
+    const rollbackIdx = sqlSeq.indexOf('ROLLBACK');
+    expect(firstUpdateIdx).toBeGreaterThanOrEqual(0);
+    expect(rollbackIdx).toBeGreaterThan(firstUpdateIdx);
   });
 });

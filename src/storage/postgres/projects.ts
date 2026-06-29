@@ -107,6 +107,11 @@ export class PostgresProjectsRepository {
 
     await this.client.query('BEGIN');
     try {
+      // Defer all deferrable constraints until COMMIT so that updating
+      // agent_events.project_id does not immediately orphan
+      // observation_generation_jobs rows (which carry a 3-way FK on
+      // (agent_event_id, project_id, team_id) → agent_events).
+      await this.client.query('SET CONSTRAINTS ALL DEFERRED');
       for (const table of referencingTables) {
         await this.client.query(
           `UPDATE ${table} SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
