@@ -304,15 +304,7 @@ ${s.stack}`:` ${s.message}`;else if(this.getLevel()===0&&typeof s=="object")try{
                     AND t.idempotency_key = f.idempotency_key
                 )
               )
-            )`,[i.id,e,s.id]),await this.client.query("UPDATE server_sessions SET project_id = $1 WHERE project_id = $2 AND team_id = $3",[s.id,i.id,e]),await this.client.query("UPDATE agent_events SET project_id = $1 WHERE project_id = $2 AND team_id = $3",[s.id,i.id,e]),await this.client.query(`DELETE FROM observation_generation_jobs f
-          WHERE f.project_id = $1 AND f.team_id = $2
-            AND EXISTS (
-              SELECT 1 FROM observation_generation_jobs t
-              WHERE t.project_id = $3 AND t.team_id = $2
-                AND t.source_type = f.source_type
-                AND t.source_id = f.source_id
-                AND t.job_type = f.job_type
-            )`,[i.id,e,s.id]),await this.client.query("UPDATE observation_generation_jobs SET project_id = $1 WHERE project_id = $2 AND team_id = $3",[s.id,i.id,e]),await this.client.query(`DELETE FROM observations f
+            )`,[i.id,e,s.id]),await this.client.query("UPDATE server_sessions SET project_id = $1 WHERE project_id = $2 AND team_id = $3",[s.id,i.id,e]),await this.client.query("UPDATE agent_events SET project_id = $1 WHERE project_id = $2 AND team_id = $3",[s.id,i.id,e]),await this.client.query("DELETE FROM observation_generation_jobs WHERE project_id = $1 AND team_id = $2",[i.id,e]),await this.client.query(`DELETE FROM observations f
           WHERE f.project_id = $1 AND f.team_id = $2
             AND f.generation_key IS NOT NULL
             AND EXISTS (
