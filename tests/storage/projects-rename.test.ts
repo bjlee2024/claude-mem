@@ -134,6 +134,43 @@ describe('renameOrMerge', () => {
     expect(nameUpdates.length).toBe(0);
   });
 
+  it('guards against same-id merge (data loss on rename-to-self)', async () => {
+    // Both "from" and "to" name lookups resolve to the same project id.
+    // This can occur when the user tries to rename to the same name via different
+    // code paths or race conditions. Must NOT enter merge transaction or delete.
+    const c = fakeClient([
+      // SELECT for "from" → found
+      {
+        matchSql: SELECT_PROJECT,
+        matchParams: (p) => p[1] === 'original',
+        rows: [{ id: 'same-id' }],
+      },
+      // SELECT for "to" → found with SAME id
+      {
+        matchSql: SELECT_PROJECT,
+        matchParams: (p) => p[1] === 'also-same',
+        rows: [{ id: 'same-id' }],
+      },
+    ]);
+    const repo = new PostgresProjectsRepository(c as any);
+    const result = await repo.renameOrMerge('team1', 'original', 'also-same');
+    // Should return early without merging
+    expect(result).toEqual({ id: 'same-id', name: 'also-same', merged: false });
+
+    // No transaction commands should be issued
+    const txCmds = c.calls.filter((q) => TRANSACTION.test(q.sql));
+    expect(txCmds.length).toBe(0);
+    // No DELETE query should be issued
+    const deletes = c.calls.filter((q) => DELETE_PROJECT.test(q.sql));
+    expect(deletes.length).toBe(0);
+    // No reference table UPDATEs
+    const refUpdates = c.calls.filter((q) => UPDATE_REF.test(q.sql));
+    expect(refUpdates.length).toBe(0);
+    // No name UPDATE (simple return, not even a rename)
+    const nameUpdates = c.calls.filter((q) => UPDATE_NAME.test(q.sql));
+    expect(nameUpdates.length).toBe(0);
+  });
+
   it('rolls back and rethrows on mid-merge error', async () => {
     const c = fakeClient([
       { matchSql: SELECT_PROJECT, matchParams: (p) => p[1] === 'src', rows: [{ id: 'src-id' }] },

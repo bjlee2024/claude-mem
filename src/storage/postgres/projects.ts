@@ -93,6 +93,12 @@ export class PostgresProjectsRepository {
       return { id: fromRow.id, name: to, merged: false };
     }
 
+    // Guard: if from and to resolve to the same project, return early.
+    // This prevents accidental cascade deletion when the user renames to itself.
+    if (fromRow.id === toRow.id) {
+      return { id: fromRow.id, name: to, merged: false };
+    }
+
     // Merge: reassign all project_id references from `from` to `to`, then delete `from`.
     // All tables below carry a composite (project_id, team_id) FK to projects(id, team_id)
     // (schema.ts lines 120, 149, 170, 189, 224, 241).
