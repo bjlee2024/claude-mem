@@ -30,7 +30,7 @@ const DELETE_PROJECT = /DELETE FROM projects WHERE id/i;
 const TRANSACTION = /^(BEGIN|COMMIT|ROLLBACK)$/i;
 const DELETE_SESSION_CONFLICT = /DELETE FROM server_sessions f\s+WHERE f\.project_id/i;
 const DELETE_OBS_CONFLICT = /DELETE FROM observations f\s+WHERE f\.project_id/i;
-const DELETE_JOB_CONFLICT = /DELETE FROM observation_generation_jobs f\s+WHERE f\.project_id/i;
+const DELETE_JOB_ALL = /DELETE FROM observation_generation_jobs WHERE project_id/i;
 
 describe('renameOrMerge', () => {
   it('returns null when "from" project does not exist', async () => {
@@ -77,13 +77,13 @@ describe('renameOrMerge', () => {
   });
 
   it('merges when "to" project already exists', async () => {
-    // All 6 tables with project_id FK (schema.ts lines 112,140,154,175,194,229)
+    // 5 tables with project_id FK that receive UPDATE SET project_id (schema.ts).
+    // observation_generation_jobs is excluded: it is deleted outright, not migrated.
     const expectedReferencingTables = [
       'api_keys',
       'audit_log',
       'server_sessions',
       'agent_events',
-      'observation_generation_jobs',
       'observations',
     ];
 
@@ -138,16 +138,15 @@ describe('renameOrMerge', () => {
     expect(sessionDeleteIdx).toBeGreaterThanOrEqual(0);
     expect(sessionUpdateIdx).toBeGreaterThan(sessionDeleteIdx);
 
-    // ── DELETE-before-UPDATE for observation_generation_jobs ──
-    const jobDeletes = c.calls.filter((q) => DELETE_JOB_CONFLICT.test(q.sql));
+    // ── plain DELETE for observation_generation_jobs (transient queue, not migrated) ──
+    const jobDeletes = c.calls.filter((q) => DELETE_JOB_ALL.test(q.sql));
     expect(jobDeletes.length).toBe(1);
-    expect(jobDeletes[0].params).toEqual(['from-id', 'team1', 'to-id']);
-    const jobDeleteIdx = c.calls.findIndex((q) => DELETE_JOB_CONFLICT.test(q.sql));
-    const jobUpdateIdx = c.calls.findIndex(
+    expect(jobDeletes[0].params).toEqual(['from-id', 'team1']);
+    // observation_generation_jobs must NOT receive an UPDATE SET project_id
+    const jobUpdates = c.calls.filter(
       (q) => UPDATE_REF.test(q.sql) && q.sql.includes('observation_generation_jobs')
     );
-    expect(jobDeleteIdx).toBeGreaterThanOrEqual(0);
-    expect(jobUpdateIdx).toBeGreaterThan(jobDeleteIdx);
+    expect(jobUpdates.length).toBe(0);
 
     // ── DELETE-before-UPDATE for observations ──
     const obsDeletes = c.calls.filter((q) => DELETE_OBS_CONFLICT.test(q.sql));
