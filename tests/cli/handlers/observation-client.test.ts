@@ -78,7 +78,10 @@ const spoolStub = {
     return flushImpl(sender);
   },
 };
-const clientStub = { __isClientStub: true };
+const clientStub = {
+  __isClientStub: true,
+  forwardLogs: (_lines: string[]) => Promise.resolve(),
+};
 
 const clientRuntimeContext = {
   runtime: 'client' as const,
@@ -115,6 +118,7 @@ import { HOOK_EXIT_CODES } from '../../../src/shared/hook-constants.js';
 let loggerSpies: ReturnType<typeof spyOn>[] = [];
 
 beforeEach(() => {
+  logger.drainForwardBuffer(); // clear any cross-test contamination from other test files
   workerCallLog.length = 0;
   recordToolUseCalls = [];
   flushCalls = [];

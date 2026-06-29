@@ -135,6 +135,7 @@ const clientStub = {
     endSessionCalls.push(input);
     return endSessionImpl();
   },
+  forwardLogs: (_lines: string[]) => Promise.resolve(),
 };
 
 const clientRuntimeContext = {
@@ -172,6 +173,7 @@ import { HOOK_EXIT_CODES } from '../../../src/shared/hook-constants.js';
 let loggerSpies: ReturnType<typeof spyOn>[] = [];
 
 beforeEach(() => {
+  logger.drainForwardBuffer(); // clear any cross-test contamination from other test files
   workerCallLog.length = 0;
   startSessionCalls = [];
   startSessionImpl = async () => ({ session: { id: 'server-sess-1' } });
