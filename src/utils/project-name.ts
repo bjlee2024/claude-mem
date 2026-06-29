@@ -2,7 +2,6 @@ import { homedir } from 'os'
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { logger } from './logger.js';
-import { detectWorktree } from './worktree.js';
 
 function expandTilde(p: string): string {
   if (p === '~' || p.startsWith('~/')) {
@@ -32,6 +31,15 @@ function findGitRepoRoot(dir: string): string | null {
   }
 }
 
+function gitRemoteOriginUrl(repoRoot: string): string | null {
+  try {
+    const url = execFileSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return url || null;
+  } catch { return null; }
+}
+
 export function getProjectName(cwd: string | null | undefined): string {
   if (!cwd || cwd.trim() === '') {
     logger.warn('PROJECT_NAME', 'Empty cwd provided, using fallback', { cwd });
@@ -44,6 +52,13 @@ export function getProjectName(cwd: string | null | undefined): string {
   // the name is stable across subdirectories/worktrees. Fall back to the cwd
   // basename when not in a repo.
   const repoRoot = findGitRepoRoot(expanded);
+  if (repoRoot) {
+    const origin = gitRemoteOriginUrl(repoRoot);
+    if (origin) {
+      const ownerRepo = parseOwnerRepo(origin);
+      if (ownerRepo) return ownerRepo;
+    }
+  }
   const nameSource = repoRoot ?? expanded;
 
   const basename = path.basename(nameSource);
@@ -74,24 +89,35 @@ export interface ProjectContext {
 }
 
 export function getProjectContext(cwd: string | null | undefined): ProjectContext {
-  const cwdProjectName = getProjectName(cwd);
+  const name = getProjectName(cwd);
+  return { primary: name, parent: null, isWorktree: false, allProjects: [name] };
+}
 
-  if (!cwd) {
-    return { primary: cwdProjectName, parent: null, isWorktree: false, allProjects: [cwdProjectName] };
+/**
+ * Normalize a git remote URL to "owner/repo". Handles scp-like SSH
+ * (git@host:owner/repo.git), https://host/owner/repo(.git), and
+ * ssh://host/owner/repo. Returns null when the path has fewer than two
+ * segments (caller falls back to the repo basename).
+ */
+export function parseOwnerRepo(url: string): string | null {
+  if (!url) return null;
+  let s = url.trim();
+  // strip a trailing .git
+  s = s.replace(/\.git$/i, '');
+  // drop scheme: ssh:// https:// http:// git://
+  s = s.replace(/^[a-z]+:\/\//i, '');
+  // scp-like "git@host:owner/repo" → take part after the first ':'
+  // url-like "host/owner/repo" → take part after the first '/'
+  let pathPart: string;
+  if (s.includes(':') && !s.includes('/')) {
+    pathPart = s.slice(s.indexOf(':') + 1);
+  } else if (s.includes(':') && s.indexOf(':') < s.indexOf('/')) {
+    pathPart = s.slice(s.indexOf(':') + 1);
+  } else {
+    pathPart = s.slice(s.indexOf('/') + 1);
   }
-
-  const expandedCwd = expandTilde(cwd);
-  const worktreeInfo = detectWorktree(expandedCwd);
-
-  if (worktreeInfo.isWorktree && worktreeInfo.parentProjectName) {
-    const composite = `${worktreeInfo.parentProjectName}/${cwdProjectName}`;
-    return {
-      primary: composite,
-      parent: worktreeInfo.parentProjectName,
-      isWorktree: true,
-      allProjects: [worktreeInfo.parentProjectName, composite]
-    };
-  }
-
-  return { primary: cwdProjectName, parent: null, isWorktree: false, allProjects: [cwdProjectName] };
+  // strip leading userinfo@host if still present (url-like without scheme handled above)
+  const segments = pathPart.split('/').filter(Boolean);
+  if (segments.length < 2) return null;
+  return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
 }

@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS observation_generation_jobs (
     OR
     (source_type = 'observation_reindex' AND agent_event_id IS NULL)
   ),
-  FOREIGN KEY (agent_event_id, project_id, team_id) REFERENCES agent_events(id, project_id, team_id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_event_id, project_id, team_id) REFERENCES agent_events(id, project_id, team_id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
   FOREIGN KEY (project_id, team_id) REFERENCES projects(id, team_id) ON DELETE CASCADE
 );
 
@@ -319,4 +319,37 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_scope_created ON audit_log(project_id, 
 -- NOTE: on pre-existing databases any duplicate (team_id, name) rows must be
 -- collapsed before this index can be created.
 CREATE UNIQUE INDEX IF NOT EXISTS projects_team_name_uniq ON projects (team_id, name);
+-- Migration: make the 3-way FK on observation_generation_jobs(agent_event_id,
+-- project_id, team_id) DEFERRABLE so that renameOrMerge can issue
+-- SET CONSTRAINTS ALL DEFERRED inside its merge transaction.  Without this,
+-- updating agent_events.project_id while observation_generation_jobs still
+-- references the old project_id causes an immediate FK violation.
+-- The DO block is idempotent: it only acts when the constraint still exists in
+-- its non-deferrable form (condeferrable = false).  Fresh databases get the
+-- deferrable definition directly from the CREATE TABLE above.
+DO $$
+DECLARE
+  con_name TEXT;
+BEGIN
+  SELECT c.conname INTO con_name
+  FROM pg_constraint c
+  WHERE c.conrelid = 'observation_generation_jobs'::regclass
+    AND c.contype = 'f'
+    AND c.condeferrable = false
+    AND (
+      SELECT array_agg(a.attname::text ORDER BY array_position(c.conkey, a.attnum))
+      FROM pg_attribute a
+      WHERE a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+    ) = ARRAY['agent_event_id', 'project_id', 'team_id']
+  LIMIT 1;
+  IF con_name IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE observation_generation_jobs DROP CONSTRAINT %I', con_name);
+    ALTER TABLE observation_generation_jobs
+      ADD CONSTRAINT observation_generation_jobs_ae_project_team_fkey
+      FOREIGN KEY (agent_event_id, project_id, team_id)
+      REFERENCES agent_events(id, project_id, team_id)
+      ON DELETE CASCADE
+      DEFERRABLE INITIALLY IMMEDIATE;
+  END IF;
+END $$;
 `;

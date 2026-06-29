@@ -23,6 +23,7 @@ import { requestIdMiddleware } from '../../middleware/request-id.js';
 import type { ActiveServerBetaQueueManager } from '../../runtime/ActiveServerBetaQueueManager.js';
 import type { ServerBetaQueueManager } from '../../runtime/types.js';
 import { PostgresServerSessionsRepository } from '../../../storage/postgres/server-sessions.js';
+import { PostgresProjectsRepository } from '../../../storage/postgres/projects.js';
 import type { ServerSessionGenerationPolicy } from '../../runtime/SessionGenerationPolicy.js';
 import { IngestEventsService, type EnqueueOutcome } from '../../services/IngestEventsService.js';
 import { EndSessionService } from '../../services/EndSessionService.js';
@@ -530,6 +531,31 @@ export class ServerV1PostgresRoutes implements RouteHandler {
           res.status(200).json({ id: row.id });
         } catch (error) {
           this.handleDbError(error, res, 'project.resolve');
+        }
+      },
+    ));
+
+    // POST /v1/projects/rename — rename-or-merge a project within the caller's
+    // team. Requires a team-scoped api key (project_id NULL). When the `from`
+    // project does not exist returns { renamed: false }; on success returns
+    // { renamed: true, id, name, merged }.
+    app.post('/v1/projects/rename', writeAuth, this.handleCreate(
+      z.object({ from: z.string().min(1).max(200), to: z.string().min(1).max(200) }),
+      async (req, res, body) => {
+        const teamId = this.requireTeamId(req, res);
+        if (!teamId) return;
+        if (req.authContext?.projectId) {
+          res.status(403).json({ error: 'Forbidden', message: 'project.rename requires a team-scoped api key' });
+          return;
+        }
+        try {
+          const repo = new PostgresProjectsRepository(this.options.pool);
+          const result = await repo.renameOrMerge(teamId, body.from, body.to);
+          if (!result) { res.status(200).json({ renamed: false }); return; }
+          await this.auditWrite(req, 'project.rename', result.id, result.id, { from: body.from, to: body.to, merged: result.merged });
+          res.status(200).json({ renamed: true, ...result });
+        } catch (error) {
+          this.handleDbError(error, res, 'project.rename');
         }
       },
     ));

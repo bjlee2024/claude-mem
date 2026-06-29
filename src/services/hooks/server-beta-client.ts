@@ -344,6 +344,11 @@ export class ServerBetaClient {
     return res.id;
   }
 
+  // Client/server split — rename a project; used by `project migrate` CLI (Task 6).
+  async renameProject(from: string, to: string): Promise<{ renamed: boolean; id?: string; name?: string; merged?: boolean }> {
+    return this.request('POST', '/v1/projects/rename', { from, to });
+  }
+
   // Phase 8 — MCP `observation_generation_status`. Server returns the same
   // payload as `/v1/jobs/:id` so MCP clients and REST clients see identical
   // job status (including transport state).
