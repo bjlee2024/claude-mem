@@ -95,3 +95,32 @@ export function getProjectContext(cwd: string | null | undefined): ProjectContex
 
   return { primary: cwdProjectName, parent: null, isWorktree: false, allProjects: [cwdProjectName] };
 }
+
+/**
+ * Normalize a git remote URL to "owner/repo". Handles scp-like SSH
+ * (git@host:owner/repo.git), https://host/owner/repo(.git), and
+ * ssh://host/owner/repo. Returns null when the path has fewer than two
+ * segments (caller falls back to the repo basename).
+ */
+export function parseOwnerRepo(url: string): string | null {
+  if (!url) return null;
+  let s = url.trim();
+  // strip a trailing .git
+  s = s.replace(/\.git$/i, '');
+  // drop scheme: ssh:// https:// http:// git://
+  s = s.replace(/^[a-z]+:\/\//i, '');
+  // scp-like "git@host:owner/repo" → take part after the first ':'
+  // url-like "host/owner/repo" → take part after the first '/'
+  let pathPart: string;
+  if (s.includes(':') && !s.includes('/')) {
+    pathPart = s.slice(s.indexOf(':') + 1);
+  } else if (s.includes(':') && s.indexOf(':') < s.indexOf('/')) {
+    pathPart = s.slice(s.indexOf(':') + 1);
+  } else {
+    pathPart = s.slice(s.indexOf('/') + 1);
+  }
+  // strip leading userinfo@host if still present (url-like without scheme handled above)
+  const segments = pathPart.split('/').filter(Boolean);
+  if (segments.length < 2) return null;
+  return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
+}
