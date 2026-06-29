@@ -1,6 +1,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { homedir } from 'os';
+import { basename } from 'path';
 import { getProjectName, getProjectContext } from '../../src/utils/project-name.js';
 
 describe('getProjectName', () => {
@@ -167,6 +168,7 @@ describe('getProjectContext', () => {
       // valid git repo (no origin, no real commit graph), so it falls back to
       // the cwd basename of worktreeCheckout.
       const ctx = getProjectContext(worktreeCheckout);
+      expect(ctx.primary).toBe(basename(worktreeCheckout));
       expect(ctx.isWorktree).toBe(false);
       expect(ctx.parent).toBeNull();
       expect(ctx.allProjects).toEqual([ctx.primary]);
@@ -175,8 +177,7 @@ describe('getProjectContext', () => {
     it('write-path call sites resolve to a single flat name in worktrees', () => {
       const project = getProjectContext(worktreeCheckout).primary;
       // The project name is a single flat identifier, not a composite.
-      expect(typeof project).toBe('string');
-      expect(project.length).toBeGreaterThan(0);
+      expect(project).toBe(basename(worktreeCheckout));
     });
   });
 });
