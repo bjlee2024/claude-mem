@@ -99,31 +99,106 @@ export class PostgresProjectsRepository {
       return { id: fromRow.id, name: to, merged: false };
     }
 
-    // Merge: reassign all project_id references from `from` to `to`, then delete `from`.
-    // All tables below carry a composite (project_id, team_id) FK to projects(id, team_id)
-    // (schema.ts lines 120, 149, 170, 189, 224, 241).
-    const referencingTables = [
-      'api_keys',                    // schema.ts line 112 / composite FK line 120
-      'audit_log',                   // schema.ts line 140 / composite FK line 149
-      'server_sessions',             // schema.ts line 154 / composite FK line 170
-      'agent_events',                // schema.ts line 175 / composite FK line 189
-      'observation_generation_jobs', // schema.ts line 194 / composite FK line 224
-      'observations',                // schema.ts line 229 / composite FK line 241
-    ] as const;
+    // Merge: for tables with a project_id-bearing UNIQUE constraint, DELETE the
+    // from-rows that would collide before re-assigning the rest to to.  Tables
+    // without such a constraint (api_keys, audit_log, agent_events) keep a plain
+    // UPDATE.  All child rows of deleted server_sessions are preserved because
+    // every server_session_id FK uses ON DELETE SET NULL.
+    //
+    // Unique constraints that require pre-deletion (schema.ts):
+    //   server_sessions: UNIQUE (project_id, external_session_id)             line 169
+    //   server_sessions: UNIQUE (project_id, idempotency_key) WHERE NOT NULL  line 296
+    //   observations:    UNIQUE (team_id, project_id, generation_key) WHERE NOT NULL  line 299
+    //   observation_generation_jobs: UNIQUE (team_id, project_id, source_type, source_id, job_type)  line 302
 
     await this.client.query('BEGIN');
     try {
-      // Defer all deferrable constraints until COMMIT so that updating
-      // agent_events.project_id does not immediately orphan
-      // observation_generation_jobs rows (which carry a 3-way FK on
-      // (agent_event_id, project_id, team_id) → agent_events).
+      // Defer the 3-way FK observation_generation_jobs → agent_events so we can
+      // update agent_events.project_id before observation_generation_jobs.
       await this.client.query('SET CONSTRAINTS ALL DEFERRED');
-      for (const table of referencingTables) {
-        await this.client.query(
-          `UPDATE ${table} SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
-          [toRow.id, fromRow.id, teamId]
-        );
-      }
+
+      // ── api_keys: no project_id-bearing unique constraint → plain UPDATE ──
+      await this.client.query(
+        `UPDATE api_keys SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
+      // ── audit_log: no project_id-bearing unique constraint → plain UPDATE ──
+      await this.client.query(
+        `UPDATE audit_log SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
+      // ── server_sessions: TWO unique keys involving project_id ──
+      // Key 1: (project_id, external_session_id)
+      // Key 2: (project_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+      // Delete any from-session that would collide on EITHER key.
+      await this.client.query(
+        `DELETE FROM server_sessions f
+          WHERE f.project_id = $1 AND f.team_id = $2
+            AND (
+              EXISTS (
+                SELECT 1 FROM server_sessions t
+                WHERE t.project_id = $3 AND t.team_id = $2
+                  AND t.external_session_id = f.external_session_id
+              )
+              OR (
+                f.idempotency_key IS NOT NULL
+                AND EXISTS (
+                  SELECT 1 FROM server_sessions t
+                  WHERE t.project_id = $3 AND t.team_id = $2
+                    AND t.idempotency_key = f.idempotency_key
+                )
+              )
+            )`,
+        [fromRow.id, teamId, toRow.id]
+      );
+      await this.client.query(
+        `UPDATE server_sessions SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
+      // ── agent_events: UNIQUE (id, project_id, team_id) includes own id → no collision ──
+      await this.client.query(
+        `UPDATE agent_events SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
+      // ── observation_generation_jobs: UNIQUE (team_id, project_id, source_type, source_id, job_type) ──
+      await this.client.query(
+        `DELETE FROM observation_generation_jobs f
+          WHERE f.project_id = $1 AND f.team_id = $2
+            AND EXISTS (
+              SELECT 1 FROM observation_generation_jobs t
+              WHERE t.project_id = $3 AND t.team_id = $2
+                AND t.source_type = f.source_type
+                AND t.source_id = f.source_id
+                AND t.job_type = f.job_type
+            )`,
+        [fromRow.id, teamId, toRow.id]
+      );
+      await this.client.query(
+        `UPDATE observation_generation_jobs SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
+      // ── observations: UNIQUE (team_id, project_id, generation_key) WHERE generation_key IS NOT NULL ──
+      await this.client.query(
+        `DELETE FROM observations f
+          WHERE f.project_id = $1 AND f.team_id = $2
+            AND f.generation_key IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM observations t
+              WHERE t.project_id = $3 AND t.team_id = $2
+                AND t.generation_key = f.generation_key
+            )`,
+        [fromRow.id, teamId, toRow.id]
+      );
+      await this.client.query(
+        `UPDATE observations SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
+        [toRow.id, fromRow.id, teamId]
+      );
+
       await this.client.query('DELETE FROM projects WHERE id = $1', [fromRow.id]);
       await this.client.query('COMMIT');
     } catch (e) {

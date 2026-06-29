@@ -28,6 +28,9 @@ const UPDATE_NAME = /UPDATE projects SET name/i;
 const UPDATE_REF = /UPDATE \w+ SET project_id/i;
 const DELETE_PROJECT = /DELETE FROM projects WHERE id/i;
 const TRANSACTION = /^(BEGIN|COMMIT|ROLLBACK)$/i;
+const DELETE_SESSION_CONFLICT = /DELETE FROM server_sessions f\s+WHERE f\.project_id/i;
+const DELETE_OBS_CONFLICT = /DELETE FROM observations f\s+WHERE f\.project_id/i;
+const DELETE_JOB_CONFLICT = /DELETE FROM observation_generation_jobs f\s+WHERE f\.project_id/i;
 
 describe('renameOrMerge', () => {
   it('returns null when "from" project does not exist', async () => {
@@ -123,6 +126,48 @@ describe('renameOrMerge', () => {
       expect(found!.sql).toMatch(/WHERE project_id = \$2 AND team_id = \$3/i);
       expect(found!.params).toEqual(['to-id', 'from-id', 'team1']);
     }
+
+    // ── DELETE-before-UPDATE for server_sessions ──
+    const sessionDeletes = c.calls.filter((q) => DELETE_SESSION_CONFLICT.test(q.sql));
+    expect(sessionDeletes.length).toBe(1);
+    expect(sessionDeletes[0].params).toEqual(['from-id', 'team1', 'to-id']);
+    const sessionDeleteIdx = c.calls.findIndex((q) => DELETE_SESSION_CONFLICT.test(q.sql));
+    const sessionUpdateIdx = c.calls.findIndex(
+      (q) => UPDATE_REF.test(q.sql) && q.sql.includes('server_sessions')
+    );
+    expect(sessionDeleteIdx).toBeGreaterThanOrEqual(0);
+    expect(sessionUpdateIdx).toBeGreaterThan(sessionDeleteIdx);
+
+    // ── DELETE-before-UPDATE for observation_generation_jobs ──
+    const jobDeletes = c.calls.filter((q) => DELETE_JOB_CONFLICT.test(q.sql));
+    expect(jobDeletes.length).toBe(1);
+    expect(jobDeletes[0].params).toEqual(['from-id', 'team1', 'to-id']);
+    const jobDeleteIdx = c.calls.findIndex((q) => DELETE_JOB_CONFLICT.test(q.sql));
+    const jobUpdateIdx = c.calls.findIndex(
+      (q) => UPDATE_REF.test(q.sql) && q.sql.includes('observation_generation_jobs')
+    );
+    expect(jobDeleteIdx).toBeGreaterThanOrEqual(0);
+    expect(jobUpdateIdx).toBeGreaterThan(jobDeleteIdx);
+
+    // ── DELETE-before-UPDATE for observations ──
+    const obsDeletes = c.calls.filter((q) => DELETE_OBS_CONFLICT.test(q.sql));
+    expect(obsDeletes.length).toBe(1);
+    expect(obsDeletes[0].params).toEqual(['from-id', 'team1', 'to-id']);
+    const obsDeleteIdx = c.calls.findIndex((q) => DELETE_OBS_CONFLICT.test(q.sql));
+    const obsUpdateIdx = c.calls.findIndex(
+      (q) =>
+        UPDATE_REF.test(q.sql) &&
+        q.sql.includes('observations') &&
+        !q.sql.includes('observation_generation_jobs')
+    );
+    expect(obsDeleteIdx).toBeGreaterThanOrEqual(0);
+    expect(obsUpdateIdx).toBeGreaterThan(obsDeleteIdx);
+
+    // ── No pre-DELETE for api_keys, audit_log, agent_events ──
+    const unexpectedDeletes = c.calls.filter((q) =>
+      /DELETE FROM (api_keys|audit_log|agent_events)/i.test(q.sql)
+    );
+    expect(unexpectedDeletes.length).toBe(0);
 
     // FROM project row must be deleted
     const deletes = c.calls.filter((q) => DELETE_PROJECT.test(q.sql));
