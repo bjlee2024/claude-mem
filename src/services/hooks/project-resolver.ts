@@ -47,6 +47,13 @@ export class ProjectResolver {
     return id;
   }
 
+  // Used by `project migrate` CLI (Task 6) after the server rename succeeds.
+  applyRename(from: string, to: string, id: string): void {
+    delete this.cache[from];
+    this.cache[to] = id;
+    this.persist();
+  }
+
   private load(): Record<string, string> {
     try {
       if (!existsSync(this.mapPath)) return {};
