@@ -83,6 +83,8 @@ export const observationHandler: EventHandler = {
           platformSource,
         },
       });
+      const pending = logger.drainForwardBuffer();
+      if (pending.length) { void client.forwardLogs(pending); } // fire-and-forget
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }
     if (runtime.runtime === 'server-beta') {
