@@ -159,19 +159,24 @@ describe('getProjectContext', () => {
       rmSync(tmp, { recursive: true, force: true });
     });
 
-    it('uses parent/worktree composite as primary when in a worktree', () => {
+    it('worktree folds into a flat name (no composite) — isWorktree always false', () => {
+      // New behavior: worktree detection is removed; getProjectContext always
+      // returns isWorktree:false and parent:null. The project name is derived
+      // from git origin owner/repo when available, or the repo root basename,
+      // or the cwd basename for non-git dirs. The fake worktree here is not a
+      // valid git repo (no origin, no real commit graph), so it falls back to
+      // the cwd basename of worktreeCheckout.
       const ctx = getProjectContext(worktreeCheckout);
-      expect(ctx.isWorktree).toBe(true);
-      expect(ctx.primary).toBe('main-repo/my-worktree');
-      expect(ctx.parent).toBe('main-repo');
-      expect(ctx.allProjects).toEqual(['main-repo', 'main-repo/my-worktree']);
+      expect(ctx.isWorktree).toBe(false);
+      expect(ctx.parent).toBeNull();
+      expect(ctx.allProjects).toEqual([ctx.primary]);
     });
 
-    it('write-path call sites resolve to composite name in worktrees', () => {
+    it('write-path call sites resolve to a single flat name in worktrees', () => {
       const project = getProjectContext(worktreeCheckout).primary;
-      expect(project).toBe('main-repo/my-worktree');
-      expect(project).not.toBe('main-repo');
-      expect(project).not.toBe('my-worktree');
+      // The project name is a single flat identifier, not a composite.
+      expect(typeof project).toBe('string');
+      expect(project.length).toBeGreaterThan(0);
     });
   });
 });

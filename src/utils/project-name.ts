@@ -2,7 +2,6 @@ import { homedir } from 'os'
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { logger } from './logger.js';
-import { detectWorktree } from './worktree.js';
 
 function expandTilde(p: string): string {
   if (p === '~' || p.startsWith('~/')) {
@@ -32,6 +31,15 @@ function findGitRepoRoot(dir: string): string | null {
   }
 }
 
+function gitRemoteOriginUrl(repoRoot: string): string | null {
+  try {
+    const url = execFileSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return url || null;
+  } catch { return null; }
+}
+
 export function getProjectName(cwd: string | null | undefined): string {
   if (!cwd || cwd.trim() === '') {
     logger.warn('PROJECT_NAME', 'Empty cwd provided, using fallback', { cwd });
@@ -44,6 +52,13 @@ export function getProjectName(cwd: string | null | undefined): string {
   // the name is stable across subdirectories/worktrees. Fall back to the cwd
   // basename when not in a repo.
   const repoRoot = findGitRepoRoot(expanded);
+  if (repoRoot) {
+    const origin = gitRemoteOriginUrl(repoRoot);
+    if (origin) {
+      const ownerRepo = parseOwnerRepo(origin);
+      if (ownerRepo) return ownerRepo;
+    }
+  }
   const nameSource = repoRoot ?? expanded;
 
   const basename = path.basename(nameSource);
@@ -74,26 +89,8 @@ export interface ProjectContext {
 }
 
 export function getProjectContext(cwd: string | null | undefined): ProjectContext {
-  const cwdProjectName = getProjectName(cwd);
-
-  if (!cwd) {
-    return { primary: cwdProjectName, parent: null, isWorktree: false, allProjects: [cwdProjectName] };
-  }
-
-  const expandedCwd = expandTilde(cwd);
-  const worktreeInfo = detectWorktree(expandedCwd);
-
-  if (worktreeInfo.isWorktree && worktreeInfo.parentProjectName) {
-    const composite = `${worktreeInfo.parentProjectName}/${cwdProjectName}`;
-    return {
-      primary: composite,
-      parent: worktreeInfo.parentProjectName,
-      isWorktree: true,
-      allProjects: [worktreeInfo.parentProjectName, composite]
-    };
-  }
-
-  return { primary: cwdProjectName, parent: null, isWorktree: false, allProjects: [cwdProjectName] };
+  const name = getProjectName(cwd);
+  return { primary: name, parent: null, isWorktree: false, allProjects: [name] };
 }
 
 /**
