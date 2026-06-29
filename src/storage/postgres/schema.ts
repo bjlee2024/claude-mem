@@ -337,7 +337,7 @@ BEGIN
     AND c.contype = 'f'
     AND c.condeferrable = false
     AND (
-      SELECT array_agg(a.attname ORDER BY array_position(c.conkey, a.attnum))
+      SELECT array_agg(a.attname::text ORDER BY array_position(c.conkey, a.attnum))
       FROM pg_attribute a
       WHERE a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
     ) = ARRAY['agent_event_id', 'project_id', 'team_id']
