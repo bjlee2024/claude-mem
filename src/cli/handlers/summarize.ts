@@ -108,7 +108,7 @@ export const summarizeHandler: EventHandler = {
         logger.error('HOOK', 'client session end failed (best-effort)', { error: String(error) });
       }
       const pending = logger.drainForwardBuffer();
-      if (pending.length) { void client.forwardLogs(pending); }
+      if (pending.length) { await client.forwardLogs(pending); }
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }
     if (runtime.runtime === 'server-beta') {

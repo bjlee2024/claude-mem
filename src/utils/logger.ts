@@ -235,6 +235,16 @@ class Logger {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
   }
 
+  /** Derive the source tag for own-process log lines at runtime.
+   *  worker → process.env.CLAUDE_MEM_CONTAINER_MODE === 'worker'
+   *  client → process.env.CLAUDE_MEM_RUNTIME === 'client'
+   *  server → default (main server process or tests with no override) */
+  private get ownSource(): 'worker' | 'client' | 'server' {
+    if (process.env.CLAUDE_MEM_CONTAINER_MODE === 'worker') return 'worker';
+    if (process.env.CLAUDE_MEM_RUNTIME === 'client') return 'client';
+    return 'server';
+  }
+
   private log(
     level: LogLevel,
     component: Component,
@@ -283,7 +293,7 @@ class Logger {
       }
     }
 
-    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] [server] ${correlationStr}${message}${contextStr}${dataStr}`;
+    const logLine = `[${timestamp}] [${levelStr}] [${componentStr}] [${this.ownSource.padEnd(6)}] ${correlationStr}${message}${contextStr}${dataStr}`;
 
     // In-memory ring buffer of recent lines. The server-beta runtime logs to
     // stdout (no log file), so its viewer `/api/logs` endpoint reads from here
@@ -332,13 +342,24 @@ class Logger {
    *  backs the viewer's /api/logs, tagged so the UI can show their origin. */
   ingestExternalLogs(lines: string[], source: 'worker' | 'client'): void {
     const tag = `[${source.padEnd(6)}]`;
+    // Matches any known source field at the 4th bracket position so we never
+    // double-tag lines that already carry server|worker|client from the
+    // emitting process (after the ownSource fix each process tags its own lines).
+    const knownSourceRe = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\] \[(server|worker|client)\s*\]/;
+    const threeFieldRe  = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]/;
     for (const raw of lines) {
       if (!raw) continue;
-      // Insert the source tag right after the [COMPONENT] field if the line
-      // matches the standard format; otherwise store raw with a trailing tag.
-      const tagged = /^\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]/.test(raw) && !raw.includes(`] ${tag}`)
-        ? raw.replace(/^(\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]) /, `$1 ${tag} `)
-        : `${raw} ${tag}`;
+      let tagged: string;
+      if (knownSourceRe.test(raw)) {
+        // Line already carries a known source at position 4 — leave verbatim.
+        tagged = raw;
+      } else if (threeFieldRe.test(raw)) {
+        // Well-formed log line without a source field — insert tag at position 4.
+        tagged = raw.replace(/^(\[[^\]]+\] \[[^\]]+\] \[[^\]]+\]) /, `$1 ${tag} `);
+      } else {
+        // Unstructured line — append tag.
+        tagged = `${raw} ${tag}`;
+      }
       this.recentLogs.push(tagged);
     }
     if (this.recentLogs.length > Logger.MAX_RECENT_LOGS) {

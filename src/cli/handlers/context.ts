@@ -125,7 +125,7 @@ export const contextHandler: EventHandler = {
           : undefined;
 
         const pending = logger.drainForwardBuffer();
-        if (pending.length) { void client.forwardLogs(pending); }
+        if (pending.length) { await client.forwardLogs(pending); }
         return {
           hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
           ...(systemMessage !== undefined ? { systemMessage } : {}),
@@ -133,7 +133,7 @@ export const contextHandler: EventHandler = {
         };
       } catch {
         const pending = logger.drainForwardBuffer();
-        if (pending.length) { void client.forwardLogs(pending); }
+        if (pending.length) { await client.forwardLogs(pending); }
         return emptyResult;
       }
     }

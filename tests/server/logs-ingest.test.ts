@@ -92,7 +92,7 @@ describe('POST /v1/logs/ingest', () => {
   // Happy path: authenticated POST → lines land in GET /api/logs as [client]
   // ──────────────────────────────────────────────────────────────────────────
   it('authed POST succeeds (204) and ingested lines appear in GET /api/logs tagged [client]', async () => {
-    const testLine = '[2026-06-29 12:00:00.000] [WARN ] [HOOK  ] [server] client-side warning for test';
+    const testLine = '[2026-06-29 12:00:00.000] [WARN ] [HOOK  ] [client] client-side warning for test';
 
     const res = await fetch(`http://127.0.0.1:${port}/v1/logs/ingest`, {
       method: 'POST',

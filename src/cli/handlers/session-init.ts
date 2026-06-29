@@ -74,7 +74,7 @@ export const sessionInitHandler: EventHandler = {
         logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
       }
       const pending = logger.drainForwardBuffer();
-      if (pending.length) { void client.forwardLogs(pending); }
+      if (pending.length) { await client.forwardLogs(pending); }
       return { continue: true, suppressOutput: true };
     }
     if (runtime.runtime === 'server-beta') {
