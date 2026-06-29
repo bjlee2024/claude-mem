@@ -245,6 +245,21 @@ export class ServerV1PostgresRoutes implements RouteHandler {
       });
     }));
 
+    // POST /v1/logs/ingest — the client pushes its buffered (WARN+) log lines
+    // here; they merge into the shared logger ring buffer that backs /api/logs,
+    // tagged source=client. Authenticated like other writes. Ingest is in-memory
+    // (no DB/pool work), so the handler is trivially synchronous inside the
+    // asyncHandler wrapper.
+    app.post('/v1/logs/ingest', writeAuth, this.asyncHandler(async (req, res) => {
+      const parsed = z.object({ lines: z.array(z.string()).min(1).max(500) }).safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'ValidationError', issues: parsed.error.issues });
+        return;
+      }
+      logger.ingestExternalLogs(parsed.data.lines, 'client');
+      res.status(204).end();
+    }));
+
     // POST /v1/events/batch — pre-validate, atomic insert, then enqueue
     app.post('/v1/events/batch', writeAuth, this.asyncHandler(async (req, res) => {
       const parsedQuery = EVENT_QUERY_SCHEMA.safeParse(req.query);
