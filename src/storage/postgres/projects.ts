@@ -105,16 +105,17 @@ export class PostgresProjectsRepository {
     // UPDATE.  All child rows of deleted server_sessions are preserved because
     // every server_session_id FK uses ON DELETE SET NULL.
     //
+    // observation_generation_jobs is a transient queue: drop all from-rows outright
+    // instead of migrating them (avoids CHECK constraint violations on project_id UPDATE).
+    // Child FKs use ON DELETE SET NULL / CASCADE so observations are not lost.
+    //
     // Unique constraints that require pre-deletion (schema.ts):
     //   server_sessions: UNIQUE (project_id, external_session_id)             line 169
     //   server_sessions: UNIQUE (project_id, idempotency_key) WHERE NOT NULL  line 296
     //   observations:    UNIQUE (team_id, project_id, generation_key) WHERE NOT NULL  line 299
-    //   observation_generation_jobs: UNIQUE (team_id, project_id, source_type, source_id, job_type)  line 302
 
     await this.client.query('BEGIN');
     try {
-      // Defer the 3-way FK observation_generation_jobs → agent_events so we can
-      // update agent_events.project_id before observation_generation_jobs.
       await this.client.query('SET CONSTRAINTS ALL DEFERRED');
 
       // ── api_keys: no project_id-bearing unique constraint → plain UPDATE ──
@@ -164,22 +165,14 @@ export class PostgresProjectsRepository {
         [toRow.id, fromRow.id, teamId]
       );
 
-      // ── observation_generation_jobs: UNIQUE (team_id, project_id, source_type, source_id, job_type) ──
+      // ── observation_generation_jobs: transient generation-queue — drop all from-rows
+      //    rather than migrating them. This avoids CHECK constraint violations during
+      //    project_id UPDATE. Child rows (observations.created_by_job_id,
+      //    observation_sources.generation_job_id) use ON DELETE SET NULL, so they
+      //    are safely preserved.
       await this.client.query(
-        `DELETE FROM observation_generation_jobs f
-          WHERE f.project_id = $1 AND f.team_id = $2
-            AND EXISTS (
-              SELECT 1 FROM observation_generation_jobs t
-              WHERE t.project_id = $3 AND t.team_id = $2
-                AND t.source_type = f.source_type
-                AND t.source_id = f.source_id
-                AND t.job_type = f.job_type
-            )`,
-        [fromRow.id, teamId, toRow.id]
-      );
-      await this.client.query(
-        `UPDATE observation_generation_jobs SET project_id = $1 WHERE project_id = $2 AND team_id = $3`,
-        [toRow.id, fromRow.id, teamId]
+        `DELETE FROM observation_generation_jobs WHERE project_id = $1 AND team_id = $2`,
+        [fromRow.id, teamId]
       );
 
       // ── observations: UNIQUE (team_id, project_id, generation_key) WHERE generation_key IS NOT NULL ──
