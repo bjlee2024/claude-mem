@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.5.0] - 2026-06-29
+
+## Features
+- **Unified multi-source log console** (#10): the server-beta web viewer's Console now aggregates logs from all three sources — server, generation worker (via shared-volume file tail), and host clients (via authenticated `POST /v1/logs/ingest`) — with per-source badges and a synced component filter.
+- **Origin-based project classification** (#12): projects are now named by their git origin `owner/repo` (e.g. `bjlee2024/claude-mem`) instead of the repo folder basename, so the same repo cloned to a different path is one project. Worktrees fold into the same project. New `claude-mem project migrate [--dry-run]` CLI renames/merges existing folder-name projects.
+
+## Fixes
+- `POST /v1/logs/ingest` was registered on the wrong route module (404 at runtime) — moved to the Postgres route module server-beta actually mounts (#11).
+- Project **merge** path: handle `UNIQUE (project_id, …)` collisions by de-duplicating before reassigning, make the 3-way `observation_generation_jobs` FK `DEFERRABLE`, guard against `from === to` data loss, and drop transient `observation_generation_jobs` rows on merge to avoid CHECK-constraint conflicts (#13, #14).
+
+## Upgrade notes
+- Rebuild the Docker server/worker images (a startup migration makes the FK deferrable on existing DBs) and run `npm run build-and-sync` on hosts.
+- Run `claude-mem project migrate` per repo to consolidate existing folder-name projects into `owner/repo`.
+
 ## [13.4.23] - 2026-06-27
 
 Fork release rolling up this session's work (PRs #1–6).
