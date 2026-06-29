@@ -55,3 +55,4 @@ reports/
 
 # Local deploy compose (contains local credentials/defaults — keep out of the repo)
 .docker-tls/
+.superpowers/
