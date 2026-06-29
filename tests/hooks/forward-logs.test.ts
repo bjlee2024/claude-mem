@@ -15,6 +15,5 @@ describe('ServerBetaClient.forwardLogs', () => {
 
     const boom = new ServerBetaClient({ serverBaseUrl: 'http://x:1', apiKey: 'k', fetchImpl: (async () => { throw new Error('down'); }) as any });
     await boom.forwardLogs(['x']); // must NOT throw
-    expect(true).toBe(true);
   });
 });
