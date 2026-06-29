@@ -16,7 +16,7 @@ export class WorkerLogCollector {
 
   pollOnce(): void {
     let files: string[];
-    try { files = readdirSync(this.logDir).filter(f => f.endsWith('.log')); }
+    try { files = readdirSync(this.logDir).filter(f => f.startsWith('claude-mem-worker-') && f.endsWith('.log')); }
     catch { return; }
     for (const name of files) {
       const path = join(this.logDir, name);
