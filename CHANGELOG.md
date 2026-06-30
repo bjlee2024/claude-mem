@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.6.0] - 2026-06-30
+
+## 인터랙티브 인스톨러 Client 옵션
+
+`npx @bjlee2024/claude-mem install` 인터랙티브 흐름에서 **Worker / Server(beta)** 에 더해 **Client** 를 직접 선택할 수 있습니다.
+
+- Client 선택 시 서버에서 `server enroll` 로 발급한 **enroll 토큰**을 붙여넣으면, 원격 server-beta(`/v1`)에 연결되는 thin client 로 설치됩니다 — 로컬 worker/SQLite/Chroma 없이 모든 데이터가 중앙 서버에 저장됩니다.
+- 이전에는 `install --mode client` CLI 플래그로만 접근 가능했습니다. 그 탓에 인터랙티브로 설치한 머신은 worker 로 떨어져 중앙 server-beta 메모리를 공유하지 못하고 "no memory yet" 을 봤습니다.
+
+### 구현 (surgical)
+- `promptRuntime` select 에 `Client` 추가, 토큰 입력은 `p.text` + `decodeEnrollment` 인라인 검증
+- 확정 토큰을 `resolveInstallMode({ mode:'client', enroll })` 로 매핑(검증된 기존 함수 재사용) → `setupClientRuntime`(0600 저장 + `/v1/info` preflight)
+- provider/모델 프롬프트 및 로컬 worker/SQLite/Chroma 셋업 skip — 다운스트림 `selectedRuntime==='client'` 가드 재사용
+
+**업그레이드**: `npx @bjlee2024/claude-mem@13.6.0`
+
 ## [13.5.0] - 2026-06-29
 
 ## Features
