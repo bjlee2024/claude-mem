@@ -710,7 +710,7 @@ function resolveClaudeAuthMethod(): 'subscription' | 'api-key' | 'gateway' {
 
 const DEFAULT_SERVER_RUNTIME_BASE_URL = 'http://127.0.0.1:37877';
 
-async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
+async function promptRuntime(options: InstallOptions): Promise<RuntimeId | 'client'> {
   // #2543 — non-interactive runtime selection via `--runtime`. When the flag is
   // present we never prompt and never fall back to the worker path: we resolve
   // the requested runtime deterministically and, for the server runtime, plan +
@@ -734,11 +734,12 @@ async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
     return 'worker';
   }
 
-  const selected = await p.select<RuntimeId>({
+  const selected = await p.select<RuntimeId | 'client'>({
     message: 'Which runtime should claude-mem start after install?',
     options: [
       { value: 'worker', label: 'Worker', hint: 'stable compatibility path' },
       { value: 'server-beta', label: 'Server (beta)', hint: 'REST V1, API keys, team-ready storage' },
+      { value: 'client', label: 'Client', hint: 'connect to a remote claude-mem server' },
     ],
     initialValue: 'worker',
   });
@@ -746,6 +747,14 @@ async function promptRuntime(options: InstallOptions): Promise<RuntimeId> {
   if (p.isCancel(selected)) {
     p.cancel('Installation cancelled.');
     process.exit(0);
+  }
+
+  // Client mode defers all settings writes to the caller: the enrollment token
+  // must be collected and decoded first, then setupClientRuntime() persists the
+  // runtime + server URL + API key together. Writing CLAUDE_MEM_RUNTIME=client
+  // here would leave a half-configured client if the user cancels token entry.
+  if (selected === 'client') {
+    return 'client';
   }
 
   mergeSettings({
@@ -1394,9 +1403,33 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
     }
   } else {
     selectedRuntime = await promptRuntime(options);
-    const selectedProvider = await promptProvider(options);
-    if (selectedProvider === 'claude') {
-      await promptClaudeModel(options);
+    if (selectedRuntime === 'client') {
+      // Interactive client install: collect the enrollment token, decode it into
+      // server URL + API key (reusing resolveInstallMode's validated mapping), and
+      // persist client settings via setupClientRuntime. No local compression
+      // provider/model is needed — everything runs on the remote server.
+      const token = await p.text({
+        message: 'Paste your enrollment token (from `server enroll` on the server):',
+        validate: (value) => {
+          if (!value) return 'Enrollment token is required';
+          try { decodeEnrollment(value); return undefined; }
+          catch { return 'Invalid enrollment token'; }
+        },
+      });
+      if (p.isCancel(token)) {
+        p.cancel('Installation cancelled.');
+        process.exit(0);
+      }
+      const clientResolved = resolveInstallMode({ mode: 'client', enroll: token });
+      resolved.runtime = clientResolved.runtime;
+      resolved.serverUrl = clientResolved.serverUrl;
+      resolved.apiKey = clientResolved.apiKey;
+      await setupClientRuntime(clientResolved.serverUrl, clientResolved.apiKey);
+    } else {
+      const selectedProvider = await promptProvider(options);
+      if (selectedProvider === 'claude') {
+        await promptClaudeModel(options);
+      }
     }
   }
 
