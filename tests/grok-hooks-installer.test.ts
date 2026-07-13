@@ -19,7 +19,7 @@ import {
 
 describe('buildGrokHooksConfig', () => {
   it('registers write-tool PostToolUse matcher and lifecycle events', () => {
-    const cfg = buildGrokHooksConfig('/usr/bin/python3', '/opt/plugin/scripts/grok-client.py');
+    const cfg = buildGrokHooksConfig();
     expect(cfg.hooks.SessionStart).toBeDefined();
     expect(cfg.hooks.UserPromptSubmit).toBeDefined();
     expect(cfg.hooks.Stop).toBeDefined();
@@ -27,10 +27,10 @@ describe('buildGrokHooksConfig', () => {
     expect(cfg.hooks.PostToolUse?.[0]?.matcher).toContain('search_replace');
     expect(cfg.hooks.PostToolUse?.[0]?.matcher).toContain('run_terminal_command');
     const cmd = cfg.hooks.SessionStart?.[0]?.hooks?.[0]?.command ?? '';
-    expect(cmd).toContain('/usr/bin/python3');
-    expect(cmd).toContain('/opt/plugin/scripts/grok-client.py');
-    // No CLAUDE_PLUGIN_ROOT placeholders (Rule B)
+    // Relative to hooks JSON dir (Grok docs format) — not quoted absolute paths
+    expect(cmd).toBe('bin/claude-mem-client.py');
     expect(JSON.stringify(cfg)).not.toMatch(/\$\{CLAUDE_PLUGIN_ROOT\}/);
+    expect(cmd).not.toMatch(/^"/);
   });
 });
 
@@ -56,15 +56,18 @@ describe('GrokHooksInstaller install/uninstall', () => {
     expect(code).toBe(0);
 
     const hooksFile = join(process.env.GROK_HOME!, 'hooks', 'claude-mem.json');
+    const clientFile = join(process.env.GROK_HOME!, 'hooks', 'bin', 'claude-mem-client.py');
     expect(existsSync(hooksFile)).toBe(true);
+    expect(existsSync(clientFile)).toBe(true);
     const parsed = JSON.parse(readFileSync(hooksFile, 'utf-8'));
     expect(parsed.hooks.PostToolUse[0].matcher).toContain('search_replace');
     expect(parsed.hooks.SessionStart).toBeDefined();
-    expect(parsed.hooks.SessionStart[0].hooks[0].command).toContain('grok-client.py');
+    expect(parsed.hooks.SessionStart[0].hooks[0].command).toBe('bin/claude-mem-client.py');
 
     const un = uninstallGrokHooks();
     expect(un).toBe(0);
     expect(existsSync(hooksFile)).toBe(false);
+    expect(existsSync(clientFile)).toBe(false);
   });
 
   it('status is non-throwing when nothing installed', () => {

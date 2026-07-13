@@ -2,22 +2,34 @@
 //
 // Grok Build TUI integration — server-beta client write hooks.
 // Does NOT start or depend on the local worker. Hooks POST directly to
-// CLAUDE_MEM_SERVER_BETA_URL using the packaged plugin/scripts/grok-client.py.
+// CLAUDE_MEM_SERVER_BETA_URL via a script installed under ~/.grok/hooks/bin/.
+//
+// Command format follows Grok docs: path relative to the hooks JSON file
+// (e.g. "bin/claude-mem-client.py"). Quoted absolute "python" "script" pairs
+// have been observed to disappear from the Hooks UI after reload.
 
 import path from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { USER_SETTINGS_PATH } from '../../shared/paths.js';
 import {
-  getGrokClientAbsolutePath,
-  getPythonAbsolutePath,
-} from './install-paths.js';
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  copyFileSync,
+  chmodSync,
+} from 'fs';
+import { USER_SETTINGS_PATH } from '../../shared/paths.js';
+import { getGrokClientAbsolutePath } from './install-paths.js';
 
 const WRITE_TOOL_MATCHER =
   'search_replace|write|run_terminal_command|Edit|Write|MultiEdit|Bash';
 
 const HOOK_TIMEOUT_SEC = 10;
 const STOP_TIMEOUT_SEC = 15;
+
+/** Relative to ~/.grok/hooks/claude-mem.json (Grok docs format). */
+const RELATIVE_CLIENT_COMMAND = 'bin/claude-mem-client.py';
 
 /** Resolve at call time so GROK_HOME env overrides work (and tests can isolate). */
 function grokHome(): string {
@@ -32,6 +44,10 @@ function grokHooksDir(): string {
 
 function managedHookFile(): string {
   return path.join(grokHooksDir(), 'claude-mem.json');
+}
+
+function installedClientPath(): string {
+  return path.join(grokHooksDir(), 'bin', 'claude-mem-client.py');
 }
 
 /** Legacy name from the pre-package handoff install — remove on uninstall/upgrade. */
@@ -51,23 +67,19 @@ interface GrokHookGroup {
 }
 
 interface GrokHooksFile {
-  description?: string;
   hooks: Record<string, GrokHookGroup[]>;
 }
 
-function buildHookCommand(pythonPath: string, clientPath: string): string {
-  // Quote paths so spaces in home dirs do not break the shell.
-  const q = (p: string) => `"${p.replace(/"/g, '\\"')}"`;
-  return `${q(pythonPath)} ${q(clientPath)}`;
-}
-
-export function buildGrokHooksConfig(pythonPath: string, clientPath: string): GrokHooksFile {
-  const command = buildHookCommand(pythonPath, clientPath);
+/**
+ * Build hooks JSON using a path relative to the hooks file directory.
+ * Prefer this over absolute quoted multi-arg commands — Grok's hook loader
+ * treats `command` as an executable path or shell string relative to the JSON.
+ */
+export function buildGrokHooksConfig(command: string = RELATIVE_CLIENT_COMMAND): GrokHooksFile {
   const lifecycle = (timeout: number): GrokHookGroup[] => [
     { hooks: [{ type: 'command', command, timeout }] },
   ];
   return {
-    description: 'claude-mem server-beta client write (Grok; no local worker)',
     hooks: {
       SessionStart: lifecycle(HOOK_TIMEOUT_SEC),
       UserPromptSubmit: lifecycle(HOOK_TIMEOUT_SEC),
@@ -97,29 +109,43 @@ function readSettingsHint(): { url?: string; hasKey: boolean; runtime?: string }
   }
 }
 
+function installClientScript(sourcePath: string): string {
+  const dest = installedClientPath();
+  mkdirSync(path.dirname(dest), { recursive: true });
+  copyFileSync(sourcePath, dest);
+  try {
+    chmodSync(dest, 0o755);
+  } catch {
+    /* best-effort executable bit */
+  }
+  return dest;
+}
+
 export async function installGrokHooks(): Promise<number> {
   console.log('\nInstalling Claude-Mem Grok hooks (server-beta client write)…\n');
 
-  const clientPath = getGrokClientAbsolutePath();
-  if (!clientPath) {
+  const clientSource = getGrokClientAbsolutePath();
+  if (!clientSource) {
     console.error('Could not find grok-client.py');
     console.error('   Expected under plugin/scripts/ next to worker-service.cjs');
     return 1;
   }
 
-  const pythonPath = getPythonAbsolutePath();
   const hooksDir = grokHooksDir();
   const managed = managedHookFile();
   const legacy = legacyHookFile();
-  console.log(`  Python:       ${pythonPath}`);
-  console.log(`  Client:       ${clientPath}`);
+  console.log(`  Source:       ${clientSource}`);
   console.log(`  Hooks dir:    ${hooksDir}`);
 
   try {
     mkdirSync(hooksDir, { recursive: true });
-    const config = buildGrokHooksConfig(pythonPath, clientPath);
+    const installed = installClientScript(clientSource);
+    console.log(`  Client:       ${installed}`);
+
+    const config = buildGrokHooksConfig(RELATIVE_CLIENT_COMMAND);
     writeFileSync(managed, JSON.stringify(config, null, 2) + '\n', 'utf-8');
     console.log(`  Wrote:        ${managed}`);
+    console.log(`  Command:      ${RELATIVE_CLIENT_COMMAND} (relative to hooks dir)`);
 
     // Drop legacy handoff filename if present to avoid double-firing hooks.
     if (existsSync(legacy) && legacy !== managed) {
@@ -134,7 +160,7 @@ export async function installGrokHooks(): Promise<number> {
     const hint = readSettingsHint();
     if (!hint.url || !hint.hasKey) {
       console.log(`
-${'⚠'}  Server-beta credentials missing in ~/.claude-mem/settings.json
+⚠  Server-beta credentials missing in ~/.claude-mem/settings.json
    Set CLAUDE_MEM_RUNTIME=client, CLAUDE_MEM_SERVER_BETA_URL, and
    CLAUDE_MEM_SERVER_BETA_API_KEY so hooks can write. Hooks are fail-open
    until configured.
@@ -158,8 +184,8 @@ Events:
 
 Next steps:
   1. Ensure client settings point at server-beta (see above).
-  2. Restart Grok, or run /hooks and press r to reload.
-  3. Confirm claude-mem.json appears in the Hooks tab.
+  2. In Grok: /hooks → press r to reload (or start a new session).
+  3. Confirm "claude-mem" / bin/claude-mem-client.py appears in the Hooks tab.
 
 Read path: use MCP search/context tools (SessionStart cannot inject via stdout).
 `);
@@ -175,7 +201,7 @@ export function uninstallGrokHooks(): number {
   console.log('\nUninstalling Claude-Mem Grok hooks…\n');
 
   let removed = 0;
-  for (const file of [managedHookFile(), legacyHookFile()]) {
+  for (const file of [managedHookFile(), legacyHookFile(), installedClientPath()]) {
     if (!existsSync(file)) continue;
     try {
       unlinkSync(file);
@@ -199,20 +225,20 @@ export function uninstallGrokHooks(): number {
 export function checkGrokHooksStatus(): number {
   console.log('\nClaude-Mem Grok Hooks Status\n');
 
-  const clientPath = getGrokClientAbsolutePath();
-  console.log(`Client script: ${clientPath ?? 'NOT FOUND'}`);
-  console.log(`Python:        ${getPythonAbsolutePath()}`);
+  const clientSource = getGrokClientAbsolutePath();
+  console.log(`Plugin script: ${clientSource ?? 'NOT FOUND'}`);
+  console.log(`Installed:     ${installedClientPath()} ${existsSync(installedClientPath()) ? 'OK' : 'MISSING'}`);
   console.log(`Hooks dir:     ${grokHooksDir()}`);
 
   const present = [managedHookFile(), legacyHookFile()].filter((f) => existsSync(f));
   if (present.length === 0) {
-    console.log('Installed:     no');
+    console.log('Config:        no');
     console.log('\nRun: npx @bjlee2024/claude-mem install --ide grok\n');
     return 0;
   }
 
   for (const file of present) {
-    console.log(`Installed:     ${file}`);
+    console.log(`Config:        ${file}`);
     try {
       const raw = readFileSync(file, 'utf-8');
       const parsed = JSON.parse(raw) as GrokHooksFile;
