@@ -2,7 +2,7 @@
  * install-paths.ts — Rule B: installer-managed absolute-path bake helpers.
  *
  * See `CLAUDE.md` → "Spawn-Contract Resolution". Per-IDE config files that
- * claude-mem's own installers write (Cursor, Gemini, Windsurf, and the
+ * claude-mem's own installers write (Cursor, Gemini, Windsurf, Grok, and the
  * MCP-only IDEs: Copilot CLI, Antigravity, Goose, Roo, Warp) MUST bake
  * absolute paths — those hosts perform NO `${CLAUDE_PLUGIN_ROOT}` shell
  * substitution on the `command`/`args` fields they exec. This module is the
@@ -76,6 +76,31 @@ export function getWorkerServiceAbsolutePath(): string | null {
 /** Absolute path to the version-check script (`version-check.js`), or null. */
 export function getVersionCheckAbsolutePath(): string | null {
   return resolvePluginScript('version-check.js');
+}
+
+/** Absolute path to the Grok client-write hook (`grok-client.py`), or null. */
+export function getGrokClientAbsolutePath(): string | null {
+  return resolvePluginScript('grok-client.py');
+}
+
+/**
+ * Absolute path to a Python 3 interpreter. Falls back to the bare `python3`
+ * (or `python` on Windows) name resolved via PATH at exec time.
+ */
+export function getPythonAbsolutePath(): string {
+  const candidates = [
+    '/usr/bin/python3',
+    '/usr/local/bin/python3',
+    path.join(homedir(), '.local', 'bin', 'python3'),
+    ...(process.platform === 'win32'
+      ? [
+          path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+          path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+          'python',
+        ]
+      : []),
+  ];
+  return firstExisting(candidates) ?? (process.platform === 'win32' ? 'python' : 'python3');
 }
 
 /**

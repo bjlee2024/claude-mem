@@ -90,6 +90,14 @@ export function detectInstalledIDEs(): IDEInfo[] {
       hint: 'hooks + MCP integration',
     },
     {
+      id: 'grok',
+      label: 'Grok',
+      detected:
+        existsSync(join(home, '.grok')) || isCommandInPath('grok'),
+      supported: true,
+      hint: 'server-beta client write hooks',
+    },
+    {
       id: 'copilot-cli',
       label: 'Copilot CLI',
       detected: isCommandInPath('copilot'),

@@ -71,6 +71,9 @@ import {
 import {
   handleGeminiCliCommand
 } from './integrations/GeminiCliHooksInstaller.js';
+import {
+  handleGrokCommand
+} from './integrations/GrokHooksInstaller.js';
 
 import { DatabaseManager } from './worker/DatabaseManager.js';
 import { SessionManager } from './worker/SessionManager.js';
@@ -1195,6 +1198,13 @@ async function main() {
       const geminiSubcommand = process.argv[3];
       const geminiResult = await handleGeminiCliCommand(geminiSubcommand, process.argv.slice(4));
       process.exit(geminiResult);
+      break;
+    }
+
+    case 'grok': {
+      const grokSubcommand = process.argv[3];
+      const grokResult = await handleGrokCommand(grokSubcommand, process.argv.slice(4));
+      process.exit(grokResult);
       break;
     }
 

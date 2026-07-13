@@ -344,6 +344,10 @@ export async function runUninstallCommand(): Promise<void> {
       const { uninstallCodexCli } = await import('../../services/integrations/CodexCliInstaller.js');
       return uninstallCodexCli();
     }},
+    { label: 'Grok hooks', fn: async () => {
+      const { uninstallGrokHooks } = await import('../../services/integrations/GrokHooksInstaller.js');
+      return uninstallGrokHooks();
+    }},
   ];
 
   for (const { label, fn } of ideCleanups) {

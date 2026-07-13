@@ -1,6 +1,6 @@
 {
   "name": "@bjlee2024/claude-mem",
-  "version": "13.6.0",
+  "version": "13.7.0",
   "description": "Memory compression system for Claude Code - persist context across sessions",
   "keywords": [
     "claude",
@@ -54,6 +54,7 @@
     "plugin/modes",
     "plugin/scripts/*.js",
     "plugin/scripts/*.cjs",
+    "plugin/scripts/*.py",
     "plugin/skills",
     "plugin/ui",
     "openclaw"

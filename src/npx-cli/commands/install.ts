@@ -299,6 +299,23 @@ function makeIDETask(ideId: string, summary: InstallSummary): TaskDescriptor | n
       };
     }
 
+    case 'grok': {
+      return {
+        title: 'Grok: installing server-beta client hooks',
+        task: async (message) => {
+          message('Loading Grok installer…');
+          const { installGrokHooks } = await import('../../services/integrations/GrokHooksInstaller.js');
+          message('Installing Grok hooks…');
+          const { result, output } = await bufferConsole(() => installGrokHooks());
+          if (result !== 0) {
+            recordFailure('Grok: hook installation failed', output);
+            return `Grok: hook installation failed ${pc.red('FAIL')}`;
+          }
+          return `Grok: server-beta client hooks installed ${pc.green('OK')}`;
+        },
+      };
+    }
+
     case 'copilot-cli':
     case 'antigravity':
     case 'goose':

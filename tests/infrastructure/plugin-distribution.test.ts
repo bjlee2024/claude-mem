@@ -183,6 +183,7 @@ describe('Plugin Distribution - package.json Files Field', () => {
     expect(packageJson.files).toContain('plugin/hooks');
     expect(packageJson.files).toContain('plugin/skills');
     expect(packageJson.files).toContain('plugin/scripts/*.cjs');
+    expect(packageJson.files).toContain('plugin/scripts/*.py');
   });
 });
 
@@ -407,6 +408,7 @@ describe('Spawn-Contract Templating - Rule B installers bake absolute paths', ()
     'src/services/integrations/CursorHooksInstaller.ts',
     'src/services/integrations/WindsurfHooksInstaller.ts',
     'src/services/integrations/GeminiCliHooksInstaller.ts',
+    'src/services/integrations/GrokHooksInstaller.ts',
     'src/services/integrations/McpIntegrations.ts',
   ];
 
@@ -429,6 +431,8 @@ describe('Spawn-Contract Templating - Rule B installers bake absolute paths', ()
       'getNodeAbsolutePath',
       'getPluginRootAbsolutePath',
       'getVersionCheckAbsolutePath',
+      'getGrokClientAbsolutePath',
+      'getPythonAbsolutePath',
     ]) {
       expect(content).toContain(`export function ${name}`);
     }

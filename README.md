@@ -137,11 +137,12 @@ Install with a single command:
 npx @bjlee2024/claude-mem install
 ```
 
-Or install for Gemini CLI (auto-detects `~/.gemini`) / OpenCode:
+Or install for Gemini CLI (auto-detects `~/.gemini`) / OpenCode / Grok:
 
 ```bash
 npx @bjlee2024/claude-mem install --ide gemini-cli
 npx @bjlee2024/claude-mem install --ide opencode
+npx @bjlee2024/claude-mem install --ide grok
 ```
 
 Or install from the plugin marketplace inside Claude Code:
@@ -400,6 +401,7 @@ npx @bjlee2024/claude-mem server api-key revoke <id>
 
 - **[Installation Guide](https://docs.claude-mem.ai/installation)** - Quick start & advanced installation
 - **[Gemini CLI Setup](https://docs.claude-mem.ai/gemini-cli/setup)** - Dedicated guide for Google's Gemini CLI integration
+- **[Grok Setup](https://docs.claude-mem.ai/grok/setup)** - Grok Build TUI → server-beta client write hooks
 - **[Usage Guide](https://docs.claude-mem.ai/usage/getting-started)** - How Claude-Mem works automatically
 - **[Search Tools](https://docs.claude-mem.ai/usage/search-tools)** - Query your project history with natural language
 - **[Beta Features](https://docs.claude-mem.ai/beta-features)** - Try experimental features like Endless Mode

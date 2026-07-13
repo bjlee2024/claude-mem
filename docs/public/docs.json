@@ -66,6 +66,13 @@
         ]
       },
       {
+        "group": "Grok Integration",
+        "icon": "robot",
+        "pages": [
+          "grok/setup"
+        ]
+      },
+      {
         "group": "Best Practices",
         "icon": "lightbulb",
         "pages": [

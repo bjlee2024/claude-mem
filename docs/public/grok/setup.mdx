@@ -1,0 +1,103 @@
+---
+title: "Grok 설정"
+description: "Grok Build TUI에서 claude-mem server-beta로 메모리를 기록하는 방법"
+---
+
+# Grok 설정
+
+> **Grok 세션에서도 Claude와 같이 중앙 server-beta에 메모리를 기록합니다.**
+
+Grok은 공식 라이프사이클 훅을 제공합니다. claude-mem은 로컬 worker 없이
+`~/.grok/hooks/`에 클라이언트 훅을 설치하고, 쓰기 전용 도구 사용·턴 종료 시
+server-beta REST API로 이벤트를 전송합니다.
+
+<Info>
+**클라이언트 쓰기 모드:** 훅이 `POST /v1/sessions/start`, `/v1/events`,
+`/v1/sessions/:id/end`를 직접 호출합니다. 로컬 worker 서비스는 필요하지 않습니다.
+</Info>
+
+## 전제 조건
+
+- [Grok Build TUI](https://x.ai) (`grok` CLI) 설치
+- Python 3 (`python3`)
+- 중앙 server-beta 엔드포인트와 API 키
+- `~/.claude-mem/settings.json`에 클라이언트 런타임 설정
+
+## 설치
+
+### 1단계: 클라이언트 설정
+
+```bash
+mkdir -p ~/.claude-mem
+cat > ~/.claude-mem/settings.json << 'EOF'
+{
+  "CLAUDE_MEM_RUNTIME": "client",
+  "CLAUDE_MEM_SERVER_BETA_URL": "https://your-server-beta.example",
+  "CLAUDE_MEM_SERVER_BETA_API_KEY": "cmem_..."
+}
+EOF
+chmod 600 ~/.claude-mem/settings.json
+```
+
+### 2단계: Grok 훅 설치
+
+```bash
+npx @bjlee2024/claude-mem install --ide grok
+```
+
+또는:
+
+```bash
+claude-mem grok install
+claude-mem grok status
+```
+
+설치기는 다음을 수행합니다.
+
+1. `plugin/scripts/grok-client.py` 절대 경로를 베이크(Rule B)
+2. `~/.grok/hooks/claude-mem.json` 작성
+3. (있으면) 핸드오프용 레거시 `claude-mem-server-beta.json` 제거
+
+### 3단계: 훅 로드
+
+- Grok 세션을 재시작하거나
+- `/hooks` 모달에서 **r** 로 디스크에서 다시 로드
+
+Hooks 탭에 `claude-mem` 이벤트가 보이면 준비된 것입니다.
+
+## 동작 방식
+
+| Grok 이벤트 | server-beta |
+|-------------|--------------|
+| SessionStart / UserPromptSubmit | `POST /v1/sessions/start` |
+| PostToolUse (`search_replace`, `write`, `run_terminal_command` 등) | `POST /v1/events` (`tool_use`) |
+| Stop | `assistant_message` + session end |
+| SessionEnd | session end |
+
+- **쓰기 도구만** 기록합니다 (read_file / grep / list_dir 등은 스킵).
+- 훅은 **fail-open** 입니다. 네트워크·설정 오류가 있어도 Grok 도구 호출을 막지 않습니다.
+- payload 내 API 키·토큰 패턴은 마스킹되고 긴 본문은 truncate 됩니다.
+- 프로젝트 이름은 git `origin`의 `owner/repo` (기존 claude-mem과 동일).
+
+## 읽기 경로 (과거 컨텍스트)
+
+Grok의 SessionStart 훅은 **stdout으로 모델 컨텍스트를 주입할 수 없습니다**(passive).
+
+과거 메모리를 쓰려면:
+
+- MCP `search` / `observation_context` 등 claude-mem 검색 도구를 사용하거나
+- 에이전트에게 server-beta 검색을 요청하세요.
+
+## 제거
+
+```bash
+claude-mem grok uninstall
+# 또는 전체 uninstall 시 Grok 훅도 함께 정리됨
+npx @bjlee2024/claude-mem uninstall
+```
+
+## 트러블슈팅
+
+- **훅이 안 보임:** `/hooks` → reload. 프로젝트 훅이라면 `/hooks-trust` 필요(전역 `~/.grok/hooks/`는 항상 신뢰).
+- **이벤트가 안 쌓임:** `claude-mem grok status`로 URL/API 키 확인. `CLAUDE_MEM_GROK_DEBUG=1` 로 훅 stderr 확인.
+- **프로젝트가 다른 이름으로 생김:** git remote `origin` 이 기대 `owner/repo` 인지 확인. 캐시는 `~/.claude-mem/project-map.json`.
