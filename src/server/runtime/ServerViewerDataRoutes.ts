@@ -36,7 +36,7 @@ export interface ViewerObservation {
   files_read: string | null;
   files_modified: string | null;
   prompt_number: number | null;
-  gitUser: string | null;
+  git_user: string | null;
   created_at: string;
   created_at_epoch: number;
 }
@@ -81,7 +81,11 @@ export function mapObservationToViewer(row: ViewerObservationRow): ViewerObserva
     files_read: asStringArrayJson(meta.files_read),
     files_modified: asStringArrayJson(meta.files_modified),
     prompt_number: null,
-    gitUser: asStringOrNull(meta.gitUser),
+    // Outbound JSON key must be git_user (snake_case) to match the frontend
+    // Observation type and ObservationCard's read of observation.git_user.
+    // The internal metadata JSONB key stays gitUser (camelCase) — that's
+    // Task 10's persisted shape and what the SQL filter matches on.
+    git_user: asStringOrNull(meta.gitUser),
     created_at: createdAt.toISOString(),
     created_at_epoch: createdAt.getTime(),
   };
