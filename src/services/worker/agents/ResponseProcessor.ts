@@ -144,7 +144,8 @@ export async function processAgentResponse(
   const labeledObservations = observations.map(obs => ({
     ...obs,
     agent_type: session.pendingAgentType ?? null,
-    agent_id: session.pendingAgentId ?? null
+    agent_id: session.pendingAgentId ?? null,
+    git_user: session.gitUser ?? null
   }));
 
   let result: ReturnType<typeof sessionStore.storeObservations>;

@@ -1621,11 +1621,12 @@ export class SessionStore {
     user_prompt: string;
     custom_title: string | null;
     status: string;
+    git_user: string | null;
   } | null {
     const stmt = this.db.prepare(`
       SELECT id, content_session_id, memory_session_id, project,
              COALESCE(platform_source, '${DEFAULT_PLATFORM_SOURCE}') as platform_source,
-             user_prompt, custom_title, status
+             user_prompt, custom_title, status, git_user
       FROM sdk_sessions
       WHERE id = ?
       LIMIT 1
@@ -1640,6 +1641,7 @@ export class SessionStore {
       user_prompt: string;
       custom_title: string | null;
       status: string;
+      git_user: string | null;
     } | null) || null;
   }
 
@@ -1782,6 +1784,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
       metadata?: string | null;
     },
     promptNumber?: number,
@@ -1797,9 +1800,9 @@ export class SessionStore {
     const stmt = this.db.prepare(`
       INSERT INTO observations
       (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-       files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+       files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
        generated_by_model, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(memory_session_id, content_hash) DO NOTHING
       RETURNING id, created_at_epoch
     `);
@@ -1819,6 +1822,7 @@ export class SessionStore {
       discoveryTokens,
       observation.agent_type ?? null,
       observation.agent_id ?? null,
+      observation.git_user ?? null,
       contentHash,
       timestampIso,
       timestampEpoch,
@@ -1902,6 +1906,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
     }>,
     summary: {
       request: string;
@@ -1925,9 +1930,9 @@ export class SessionStore {
       const obsStmt = this.db.prepare(`
         INSERT INTO observations
         (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
          generated_by_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(memory_session_id, content_hash) DO NOTHING
         RETURNING id
       `);
@@ -1952,6 +1957,7 @@ export class SessionStore {
           discoveryTokens,
           observation.agent_type ?? null,
           observation.agent_id ?? null,
+          observation.git_user ?? null,
           contentHash,
           timestampIso,
           timestampEpoch,
@@ -2018,6 +2024,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
     }>,
     summary: {
       request: string;
@@ -2043,9 +2050,9 @@ export class SessionStore {
       const obsStmt = this.db.prepare(`
         INSERT INTO observations
         (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
          generated_by_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(memory_session_id, content_hash) DO NOTHING
         RETURNING id
       `);
@@ -2070,6 +2077,7 @@ export class SessionStore {
           discoveryTokens,
           observation.agent_type ?? null,
           observation.agent_id ?? null,
+          observation.git_user ?? null,
           contentHash,
           timestampIso,
           timestampEpoch,

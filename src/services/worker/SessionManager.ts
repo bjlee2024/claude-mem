@@ -125,7 +125,8 @@ export class SessionManager {
       consecutiveInvalidOutputs: 0,
       lastGeneratorActivity: Date.now(),  // Initialize for stale detection (Issue #1099)
       pendingAgentId: null,   // Subagent identity carried from the most recent claimed message
-      pendingAgentType: null
+      pendingAgentType: null,
+      gitUser: dbSession.git_user ?? null
     };
 
     logger.debug('SESSION', 'Creating new session object (memorySessionId cleared to prevent stale resume)', {
