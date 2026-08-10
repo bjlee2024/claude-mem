@@ -813,6 +813,9 @@ export class MigrationRunner {
   // Adds git_user (TEXT, nullable) to observations and sdk_sessions, recording the
   // git author (git config user.name) at capture time. No backfill for existing rows.
   private addGitUserColumns(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(35) as SchemaVersion | undefined;
+    if (applied) return;
+
     const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
     if (!obsCols.some(c => c.name === 'git_user')) {
       this.db.run('ALTER TABLE observations ADD COLUMN git_user TEXT');
@@ -826,6 +829,8 @@ export class MigrationRunner {
     }
 
     this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
+
+    this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(35, new Date().toISOString());
   }
 
   private rebuildPendingMessagesForSelfHealingClaim(): void {
