@@ -119,6 +119,7 @@ export interface Observation {
   prompt_number: number;
   created_at: string;
   created_at_epoch: number;
+  git_user: string | null;
 }
 
 export interface Summary {
