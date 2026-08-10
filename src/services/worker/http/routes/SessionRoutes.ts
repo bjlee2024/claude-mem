@@ -176,13 +176,19 @@ export class SessionRoutes extends BaseRouteHandler {
     app.get('/api/sessions/status', this.handleStatusByClaudeId.bind(this));
   }
 
-  private static readonly sessionInitByClaudeIdSchema = z.object({
+  // Exposed as public (was private) so the schema layer can be unit-tested
+  // directly — see tests/hooks/session-init-git-user.test.ts.
+  public static readonly sessionInitByClaudeIdSchema = z.object({
     contentSessionId: z.string().min(1),
     project: z.string().optional(),
     prompt: z.string().optional(),
     platformSource: z.string().optional(),
     customTitle: z.string().optional(),
-    gitUser: z.string().optional(),
+    // getGitUser(cwd) legitimately returns null (no git / no user.name), and the
+    // hook JSON.stringifies that as `"gitUser": null`, not an absent key. The
+    // schema must tolerate both null and undefined, or session-init fails with
+    // a 400 and no sdk_sessions row is ever created.
+    gitUser: z.string().nullish(),
   }).passthrough();
 
   private static readonly observationsByClaudeIdSchema = z.object({
