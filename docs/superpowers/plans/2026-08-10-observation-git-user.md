@@ -31,6 +31,10 @@
 - `tests/shared/format-observation-title.test.ts`
 - `tests/context/observation-git-user-filter.test.ts`
 - `tests/sqlite/git-user-search-filter.test.ts`
+- `tests/sqlite/git-user-migration.test.ts`
+- `tests/hooks/session-init-git-user.test.ts`
+- `tests/sqlite/observation-git-user-store.test.ts`
+- `tests/server/observation-git-user-metadata.test.ts`
 
 **수정**
 - `src/services/sqlite/migrations/runner.ts` — 컬럼 추가 마이그레이션
@@ -971,30 +975,7 @@ git commit -m "feat: 검색·타임라인·CLI·알림 제목에 작성자 표�
 
 **title에 작성자를 합치지 않는다.** 이 API는 데이터 전달용이고 결합은 UI 책임이다.
 
-- [ ] **Step 3: 실패하는 UI 테스트 작성**
-
-`tests/viewer/observation-card-git-user.test.tsx`:
-
-```tsx
-import { describe, it, expect } from 'bun:test';
-import { formatObservationTitle } from '../../src/shared/format-observation-title.js';
-
-describe('ObservationCard 제목 결합', () => {
-  it('git_user가 있으면 by 접두어가 붙는다', () => {
-    expect(formatObservationTitle('Version Bump Implemented', 'medit-minheecho'))
-      .toBe('by medit-minheecho, Version Bump Implemented');
-  });
-
-  it('git_user가 없으면 제목만 나온다', () => {
-    expect(formatObservationTitle('Version Bump Implemented', null))
-      .toBe('Version Bump Implemented');
-  });
-});
-```
-
-`tests/viewer/`에 이미 React 컴포넌트를 렌더링하는 테스트 설정이 있으면(`ls tests/viewer/`로 확인) 그 패턴을 따라 `ObservationCard`를 직접 렌더링해 텍스트를 검증하는 편이 낫다. 렌더링 설정이 없다면 위처럼 결합 규칙만 검증하고, 컴포넌트 수정은 Step 4의 시각 확인으로 대신한다.
-
-- [ ] **Step 4: 카드 컴포넌트 수정**
+- [ ] **Step 3: 카드 컴포넌트 수정**
 
 `src/ui/viewer/components/ObservationCard.tsx` 상단 import에 추가:
 
@@ -1008,7 +989,14 @@ import { formatObservationTitle } from '../../../shared/format-observation-title
       <div className="card-title">{formatObservationTitle(observation.title, observation.git_user)}</div>
 ```
 
-- [ ] **Step 5: 테스트 통과 확인**
+- [ ] **Step 4: 타입 검사**
+
+Run: `npx tsc --noEmit`
+Expected: 오류 없음
+
+이 태스크에는 새 테스트가 없다. 결합 규칙은 Task 5의 `format-observation-title.test.ts`가 이미 검증하고, 이 태스크가 추가하는 것은 로직 없는 렌더링 한 줄과 API 필드 전달뿐이다. 실제 표시는 Task 12 Step 4의 동작 확인으로 검증한다. 프로젝트에 React 렌더링 테스트 인프라(`@testing-library`, `jsdom`, `happy-dom`)가 없으며 이번 범위에서 도입하지 않는다.
+
+- [ ] **Step 5: 기존 뷰어 테스트 회귀 확인**
 
 Run: `bun test tests/viewer/`
 Expected: PASS
@@ -1016,7 +1004,7 @@ Expected: PASS
 - [ ] **Step 6: 커밋**
 
 ```bash
-git add src/services/worker/http/routes/DataRoutes.ts src/ui/viewer/ tests/viewer/observation-card-git-user.test.tsx
+git add src/services/worker/http/routes/DataRoutes.ts src/ui/viewer/
 git commit -m "feat: 뷰어 API와 카드에 작성자 노출"
 ```
 
@@ -1475,7 +1463,7 @@ git commit -m "feat: server-beta 관측 metadata에 작성자 기록"
 - Modify: `src/server/runtime/ServerViewerDataRoutes.ts:30-31`, `:74-75`, `:116-117`
 - Modify: `src/storage/postgres/observations.ts:170-187`
 - Modify: `src/servers/mcp-server.ts:649-662`
-- Test: `tests/server/server-viewer-git-user.test.ts`
+- Test: 없음 (아래 Step 4 참조)
 
 **Interfaces:**
 - Consumes: `observations.metadata.gitUser` (Task 10)
@@ -1542,28 +1530,12 @@ git commit -m "feat: server-beta 관측 metadata에 작성자 기록"
 
 description도 갱신하고, `handleObservationSearch`가 `gitUser`를 클라이언트 호출로 전달하도록 배선한다.
 
-- [ ] **Step 4: 실패하는 테스트 작성 후 통과 확인**
-
-`tests/server/server-viewer-git-user.test.ts`:
-
-```typescript
-import { describe, it, expect } from 'bun:test';
-
-// ServerViewerDataRoutes의 매핑 함수가 export되어 있지 않다면, 이 테스트는
-// metadata -> 응답 매핑 규칙만 검증하는 형태로 둔다.
-describe('서버 뷰어 gitUser 매핑', () => {
-  it('metadata.gitUser가 문자열이면 그대로, 아니면 null', () => {
-    const pick = (meta: Record<string, unknown>) =>
-      typeof meta.gitUser === 'string' ? meta.gitUser : null;
-    expect(pick({ gitUser: 'bjlee2024' })).toBe('bjlee2024');
-    expect(pick({ gitUser: 42 })).toBeNull();
-    expect(pick({})).toBeNull();
-  });
-});
-```
+- [ ] **Step 4: 서버 테스트 회귀 확인**
 
 Run: `bun test tests/server/`
 Expected: PASS
+
+이 태스크에는 새 테스트를 추가하지 않는다. `metadata.gitUser` 추출 규칙은 Task 10의 `resolveSessionGitUser` 테스트가 이미 검증하고, 여기서 추가하는 것은 매핑 한 줄과 조건부 WHERE 절이다. postgres 검색 필터는 실제 postgres 인스턴스가 필요해 유닛 테스트로 의미 있게 검증할 수 없다 — `scripts/e2e-server-beta-docker.sh` 경로에 속한다.
 
 - [ ] **Step 5: 타입 검사**
 
@@ -1573,7 +1545,7 @@ Expected: 오류 없음
 - [ ] **Step 6: 커밋**
 
 ```bash
-git add src/server/runtime/ServerViewerDataRoutes.ts src/storage/postgres/observations.ts src/servers/mcp-server.ts tests/server/server-viewer-git-user.test.ts
+git add src/server/runtime/ServerViewerDataRoutes.ts src/storage/postgres/observations.ts src/servers/mcp-server.ts
 git commit -m "feat: server-beta 뷰어 노출 및 작성자 검색 필터"
 ```
 
