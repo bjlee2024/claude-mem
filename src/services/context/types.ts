@@ -26,6 +26,10 @@ export interface ContextConfig {
   fullObservationField: 'narrative' | 'facts';
   showLastSummary: boolean;
   showLastMessage: boolean;
+
+  // null = no filter (show everyone). Otherwise a git user.name to scope
+  // automatically-injected context to.
+  gitUserFilter: string | null;
 }
 
 export interface Observation {

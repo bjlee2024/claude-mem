@@ -22,10 +22,13 @@ function formatHeaderDateTime(): string {
   return `${date} ${time} ${tz}`;
 }
 
-export function renderHumanHeader(project: string): string[] {
+export function renderHumanHeader(project: string, gitUserFilter: string | null = null): string[] {
+  // When a filter is active, say so — otherwise "no history shown" and
+  // "everything was filtered out" look identical to the user.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
   return [
     '',
-    `${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${colors.reset}`,
+    `${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${filterNote}${colors.reset}`,
     `${colors.gray}${'─'.repeat(60)}${colors.reset}`,
     ''
   ];

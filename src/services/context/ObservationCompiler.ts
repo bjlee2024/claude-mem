@@ -24,6 +24,9 @@ export function queryObservations(
   const typePlaceholders = typeArray.map(() => '?').join(',');
   const conceptArray = Array.from(config.observationConcepts);
   const conceptPlaceholders = conceptArray.map(() => '?').join(',');
+  // observations-only query, so a direct column comparison is safe here (unlike
+  // the search filter, which also serves session_summaries via a subquery).
+  const gitUserClause = config.gitUserFilter ? 'AND o.git_user = ?' : '';
 
   return db.db.prepare(`
     SELECT
@@ -50,6 +53,7 @@ export function queryObservations(
         SELECT 1 FROM json_each(o.concepts)
         WHERE value IN (${conceptPlaceholders})
       )
+      ${gitUserClause}
     ORDER BY o.created_at_epoch DESC
     LIMIT ?
   `).all(
@@ -57,6 +61,7 @@ export function queryObservations(
     project,
     ...typeArray,
     ...conceptArray,
+    ...(config.gitUserFilter ? [config.gitUserFilter] : []),
     config.totalObservationCount
   ) as Observation[];
 }
@@ -97,6 +102,9 @@ export function queryObservationsMulti(
   const conceptPlaceholders = conceptArray.map(() => '?').join(',');
 
   const projectPlaceholders = projects.map(() => '?').join(',');
+  // observations-only query, so a direct column comparison is safe here (unlike
+  // the search filter, which also serves session_summaries via a subquery).
+  const gitUserClause = config.gitUserFilter ? 'AND o.git_user = ?' : '';
 
   return db.db.prepare(`
     SELECT
@@ -125,6 +133,7 @@ export function queryObservationsMulti(
         SELECT 1 FROM json_each(o.concepts)
         WHERE value IN (${conceptPlaceholders})
       )
+      ${gitUserClause}
     ORDER BY o.created_at_epoch DESC
     LIMIT ?
   `).all(
@@ -132,6 +141,7 @@ export function queryObservationsMulti(
     ...projects,
     ...typeArray,
     ...conceptArray,
+    ...(config.gitUserFilter ? [config.gitUserFilter] : []),
     config.totalObservationCount
   ) as Observation[];
 }

@@ -13,7 +13,7 @@ export function renderHeader(
   const output: string[] = [];
 
   if (forHuman) {
-    output.push(...Human.renderHumanHeader(project));
+    output.push(...Human.renderHumanHeader(project, config.gitUserFilter));
   } else {
     output.push(...Agent.renderAgentHeader(project));
   }

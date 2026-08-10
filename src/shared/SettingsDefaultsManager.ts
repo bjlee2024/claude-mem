@@ -31,6 +31,7 @@ export interface SettingsDefaults {
   CLAUDE_MEM_PYTHON_VERSION: string;
   CLAUDE_CODE_PATH: string;
   CLAUDE_MEM_MODE: string;
+  CLAUDE_MEM_CONTEXT_GIT_USER: string;
   CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS: string;
   CLAUDE_MEM_CONTEXT_SHOW_WORK_TOKENS: string;
   CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_AMOUNT: string;
@@ -120,6 +121,7 @@ export class SettingsDefaultsManager {
     CLAUDE_MEM_PYTHON_VERSION: '3.13',
     CLAUDE_CODE_PATH: '', // Empty means auto-detect via 'which claude'
     CLAUDE_MEM_MODE: 'code', // Default mode profile
+    CLAUDE_MEM_CONTEXT_GIT_USER: 'all', // 'all' (default) | 'me' | a literal git user.name
     CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS: 'false',
     CLAUDE_MEM_CONTEXT_SHOW_WORK_TOKENS: 'false',
     CLAUDE_MEM_CONTEXT_SHOW_SAVINGS_AMOUNT: 'false',
