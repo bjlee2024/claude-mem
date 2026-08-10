@@ -240,6 +240,7 @@ export interface DateRange {
 export interface SearchFilters {
   project?: string;
   platformSource?: string;
+  gitUser?: string;
   type?: ObservationRow['type'] | ObservationRow['type'][];
   concepts?: string | string[];
   files?: string | string[];
