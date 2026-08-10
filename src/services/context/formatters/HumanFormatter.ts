@@ -187,6 +187,13 @@ export function renderHumanFooter(totalDiscoveryTokens: number, totalReadTokens:
   ];
 }
 
-export function renderHumanEmptyState(project: string): string {
-  return `\n${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${colors.reset}\n${colors.gray}${'─'.repeat(60)}${colors.reset}\n\n${colors.dim}No previous sessions found for this project yet.${colors.reset}\n`;
+export function renderHumanEmptyState(project: string, gitUserFilter: string | null = null): string {
+  // Same reasoning as renderHumanHeader: without this note, "no history yet"
+  // and "the git-user filter hid everything" render identically, which
+  // defeats the point of having the filter be visible at all.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
+  const message = gitUserFilter
+    ? `No observations from "${gitUserFilter}" found for this project yet — other authors may have history here.`
+    : 'No previous sessions found for this project yet.';
+  return `\n${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${filterNote}${colors.reset}\n${colors.gray}${'─'.repeat(60)}${colors.reset}\n\n${colors.dim}${message}${colors.reset}\n`;
 }

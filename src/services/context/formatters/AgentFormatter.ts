@@ -168,6 +168,13 @@ export function renderAgentFooter(totalDiscoveryTokens: number, totalReadTokens:
   ];
 }
 
-export function renderAgentEmptyState(project: string): string {
-  return `# [${project}] recent context, ${formatHeaderDateTime()}\n\nNo previous sessions found.`;
+export function renderAgentEmptyState(project: string, gitUserFilter: string | null = null): string {
+  // Mirrors renderHumanEmptyState — an agent reading a filtered-empty
+  // context needs to know its own CLAUDE_MEM_CONTEXT_GIT_USER setting is
+  // why nothing came back, not that the project has no history at all.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
+  const message = gitUserFilter
+    ? `No observations from "${gitUserFilter}" found for this project yet — other authors may have history here.`
+    : 'No previous sessions found.';
+  return `# [${project}] recent context, ${formatHeaderDateTime()}${filterNote}\n\n${message}`;
 }
