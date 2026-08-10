@@ -70,7 +70,7 @@ export const sessionInitHandler: EventHandler = {
           agentId: input.agentId ?? null,
           agentType: input.agentType ?? null,
           platformSource,
-          metadata: { project, prompt },
+          metadata: { project, prompt, gitUser },
         });
       } catch (error) {
         logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
@@ -88,7 +88,7 @@ export const sessionInitHandler: EventHandler = {
           agentId: input.agentId ?? null,
           agentType: input.agentType ?? null,
           platformSource,
-          metadata: { project, prompt },
+          metadata: { project, prompt, gitUser },
         });
         logger.info('HOOK', 'session-init: server-beta session started', {
           contentSessionId: sessionId,
