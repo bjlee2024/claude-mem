@@ -39,6 +39,7 @@ export function queryObservations(
       o.files_read,
       o.files_modified,
       o.discovery_tokens,
+      o.git_user,
       o.created_at,
       o.created_at_epoch
     FROM observations o
@@ -111,6 +112,7 @@ export function queryObservationsMulti(
       o.files_read,
       o.files_modified,
       o.discovery_tokens,
+      o.git_user,
       o.created_at,
       o.created_at_epoch,
       o.project

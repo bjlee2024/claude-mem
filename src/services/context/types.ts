@@ -32,6 +32,7 @@ export interface Observation {
   id: number;
   memory_session_id: string;
   platform_source?: string;
+  git_user?: string | null;
   type: string;
   title: string | null;
   subtitle: string | null;
