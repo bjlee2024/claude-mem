@@ -197,9 +197,12 @@ export interface ObservationRow {
   files_read: string | null; 
   files_modified: string | null; 
   prompt_number: number | null;
-  discovery_tokens: number; 
+  discovery_tokens: number;
   created_at: string;
   created_at_epoch: number;
+  // Git author of the session that produced this Observation. NULL for rows
+  // predating the git-user feature. Display-only via formatObservationTitle().
+  git_user?: string | null;
 }
 
 export interface SessionSummaryRow {

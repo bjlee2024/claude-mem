@@ -14,6 +14,7 @@ import {
   extractFirstFile,
   estimateTokens
 } from '../../../shared/timeline-formatting.js';
+import { formatObservationTitle } from '../../../shared/format-observation-title.js';
 
 export interface TimelineItem {
   type: 'observation' | 'session' | 'prompt';
@@ -119,7 +120,7 @@ export class TimelineBuilder {
           (item.data as ObservationSearchResult).id === anchorId
       );
       const anchorTitle = anchorObs
-        ? ((anchorObs.data as ObservationSearchResult).title || 'Untitled')
+        ? formatObservationTitle((anchorObs.data as ObservationSearchResult).title, (anchorObs.data as ObservationSearchResult).git_user)
         : 'Unknown';
       lines.push(`# Timeline for query: "${query}"`);
       lines.push(`**Anchor:** Observation #${anchorId} - ${anchorTitle}`);
@@ -202,7 +203,7 @@ export class TimelineBuilder {
 
           const icon = ModeManager.getInstance().getTypeIcon(obs.type);
           const time = formatTime(item.epoch);
-          const title = obs.title || 'Untitled';
+          const title = formatObservationTitle(obs.title, obs.git_user);
           const tokens = estimateTokens(obs.narrative);
 
           const showTime = time !== lastTime;

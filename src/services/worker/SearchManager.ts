@@ -20,6 +20,7 @@ import {
 import type { TimelineData } from './search/index.js';
 import { ResultFormatter } from './search/ResultFormatter.js';
 import { ChromaUnavailableError } from './search/errors.js';
+import { formatObservationTitle } from '../../shared/format-observation-title.js';
 
 export class SearchManager {
   private orchestrator: SearchOrchestrator;
@@ -584,7 +585,9 @@ export class SearchManager {
 
     if (query) {
       const anchorObs = filteredItems.find(item => item.type === 'observation' && item.data.id === anchorId);
-      const anchorTitle = anchorObs && anchorObs.type === 'observation' ? ((anchorObs.data as ObservationSearchResult).title || 'Untitled') : 'Unknown';
+      const anchorTitle = anchorObs && anchorObs.type === 'observation'
+        ? formatObservationTitle((anchorObs.data as ObservationSearchResult).title, (anchorObs.data as ObservationSearchResult).git_user)
+        : 'Unknown';
       lines.push(`# Timeline for query: "${query}"`);
       lines.push(`**Anchor:** Observation #${anchorId} - ${anchorTitle}`);
     } else {
@@ -672,7 +675,7 @@ export class SearchManager {
           const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
           const time = formatTime(item.epoch);
-          const title = obs.title || 'Untitled';
+          const title = formatObservationTitle(obs.title, obs.git_user);
           const tokens = estimateTokens(obs.narrative);
 
           const showTime = time !== lastTime;
@@ -1206,7 +1209,7 @@ export class SearchManager {
           lines.push('');
           lines.push(`**Observations (${observations.length}):**`);
           for (const obs of observations) {
-            lines.push(`- ${obs.title}`);
+            lines.push(`- ${formatObservationTitle(obs.title, obs.git_user)}`);
           }
         } else {
           lines.push('');
@@ -1409,7 +1412,7 @@ export class SearchManager {
           const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
           const time = formatTime(item.epoch);
-          const title = obs.title || 'Untitled';
+          const title = formatObservationTitle(obs.title, obs.git_user);
           const tokens = estimateTokens(obs.narrative);
 
           const showTime = time !== lastTime;
@@ -1513,7 +1516,7 @@ export class SearchManager {
 
       for (let i = 0; i < results.length; i++) {
         const obs = results[i];
-        const title = obs.title || `Observation #${obs.id}`;
+        const title = formatObservationTitle(obs.title, obs.git_user);
         const date = new Date(obs.created_at_epoch).toLocaleString();
         const type = obs.type ? `[${obs.type}]` : '';
 
@@ -1564,7 +1567,7 @@ export class SearchManager {
       const lines: string[] = [];
 
       lines.push(`# Timeline for query: "${query}"`);
-      lines.push(`**Anchor:** Observation #${topResult.id} - ${topResult.title || 'Untitled'}`);
+      lines.push(`**Anchor:** Observation #${topResult.id} - ${formatObservationTitle(topResult.title, topResult.git_user)}`);
       lines.push(`**Window:** ${depthBefore} records before -> ${depthAfter} records after | **Items:** ${filteredItems?.length ?? 0}`);
       lines.push('');
 
@@ -1642,7 +1645,7 @@ export class SearchManager {
             const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
             const time = formatTime(item.epoch);
-            const title = obs.title || 'Untitled';
+            const title = formatObservationTitle(obs.title, obs.git_user);
             const tokens = estimateTokens(obs.narrative);
 
             const showTime = time !== lastTime;

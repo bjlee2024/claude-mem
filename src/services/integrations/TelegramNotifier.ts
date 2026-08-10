@@ -3,9 +3,15 @@ import { ParsedObservation } from '../../sdk/parser.js';
 import { SettingsDefaultsManager } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../shared/paths.js';
 import { logger } from '../../utils/logger.js';
+import { formatObservationTitle } from '../../shared/format-observation-title.js';
+
+// ResponseProcessor labels each ParsedObservation with the session's git_user
+// before storing/notifying (see agents/ResponseProcessor.ts), so the runtime
+// shape carries git_user even though the base parser type does not.
+export type NotifiedObservation = ParsedObservation & { git_user?: string | null };
 
 export interface TelegramNotifyInput {
-  observations: ParsedObservation[];
+  observations: NotifiedObservation[];
   observationIds: number[];
   project: string;
   memorySessionId: string;
@@ -31,14 +37,14 @@ function splitCsv(value: string): string[] {
 }
 
 function formatMessage(
-  obs: ParsedObservation,
+  obs: NotifiedObservation,
   project: string,
   memorySessionId: string,
   observationId: number,
 ): string {
   const emoji = TYPE_EMOJI[obs.type] ?? DEFAULT_EMOJI;
   const type = escapeMarkdownV2(obs.type);
-  const title = escapeMarkdownV2(obs.title ?? '');
+  const title = escapeMarkdownV2(formatObservationTitle(obs.title, obs.git_user));
   const subtitle = escapeMarkdownV2(obs.subtitle ?? '');
   const projectEscaped = escapeMarkdownV2(project);
   const idEscaped = escapeMarkdownV2(String(observationId));

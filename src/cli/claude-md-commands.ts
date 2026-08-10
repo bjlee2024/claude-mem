@@ -15,6 +15,7 @@ import { formatTime, groupByDate } from '../shared/timeline-formatting.js';
 import { isDirectChild } from '../shared/path-utils.js';
 import { logger } from '../utils/logger.js';
 import { paths } from '../shared/paths.js';
+import { formatObservationTitle } from '../shared/format-observation-title.js';
 
 const DB_PATH = paths.database();
 const SETTINGS_PATH = paths.settings();
@@ -32,6 +33,7 @@ interface ObservationRow {
   files_read: string | null;
   project: string;
   discovery_tokens: number | null;
+  git_user?: string | null;
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -221,7 +223,7 @@ function formatObservationsForClaudeMd(observations: ObservationRow[], folderPat
         lastTime = time;
 
         const icon = getTypeIcon(obs.type);
-        const title = obs.title || 'Untitled';
+        const title = formatObservationTitle(obs.title, obs.git_user);
         const tokens = estimateTokens(obs);
 
         lines.push(`| #${obs.id} | ${timeDisplay} | ${icon} | ${title} | ~${tokens} |`);

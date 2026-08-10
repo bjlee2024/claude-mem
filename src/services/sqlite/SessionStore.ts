@@ -1447,9 +1447,10 @@ export class SessionStore {
     subtitle: string;
     type: string;
     prompt_number: number | null;
+    git_user: string | null;
   }> {
     const stmt = this.db.prepare(`
-      SELECT title, subtitle, type, prompt_number
+      SELECT title, subtitle, type, prompt_number, git_user
       FROM observations
       WHERE memory_session_id = ?
       ORDER BY created_at_epoch ASC
@@ -1460,6 +1461,7 @@ export class SessionStore {
       subtitle: string;
       type: string;
       prompt_number: number | null;
+      git_user: string | null;
     }>;
   }
 

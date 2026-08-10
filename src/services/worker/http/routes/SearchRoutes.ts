@@ -12,6 +12,7 @@ import { countObservationsByProjects } from '../../../context/ObservationCompile
 import { SettingsDefaultsManager } from '../../../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../../../shared/paths.js';
 import type { ObservationSearchResult, SessionSummarySearchResult } from '../../../sqlite/types.js';
+import { formatObservationTitle } from '../../../../shared/format-observation-title.js';
 
 const ONBOARDING_EXPLAINER_PATH: string = path.resolve(__dirname, '../skills/how-it-works/onboarding-explainer.md');
 
@@ -422,7 +423,7 @@ export class SearchRoutes extends BaseRouteHandler {
     const lines: string[] = ['## Relevant Past Work (semantic match)\n'];
     for (const obs of observations.slice(0, limit)) {
       const date = obs.created_at?.slice(0, 10) || '';
-      lines.push(`### ${obs.title || 'Observation'} (${date})`);
+      lines.push(`### ${formatObservationTitle(obs.title, obs.git_user)} (${date})`);
       if (obs.narrative) lines.push(obs.narrative);
       lines.push('');
     }
