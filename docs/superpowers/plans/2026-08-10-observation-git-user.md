@@ -545,9 +545,11 @@ INSERT(`:1710-1714`):
     prompt: z.string().optional(),
     platformSource: z.string().optional(),
     customTitle: z.string().optional(),
-    gitUser: z.string().optional(),
+    gitUser: z.string().nullish(),
   }).passthrough();
 ```
+
+**`.optional()`을 쓰면 안 된다.** zod에서 `.optional()`은 `undefined`만 허용하고 `null`은 거부한다. `getGitUser`는 git 미설치나 `user.name` 미설정 시 `null`을 반환하고, `JSON.stringify`는 `null` 값을 그대로 직렬화한다. 그러면 `validateBody`가 400을 던지고, 훅은 그 400을 fallback으로 인식하지 못해 조용히 넘어가므로 **세션 행 자체가 생성되지 않는다.** git이 없는 컨테이너·CI 환경 전체가 여기 해당한다. `.nullish()`는 `null`과 `undefined`를 모두 허용한다.
 
 `handleSessionInitByClaudeId`(`:311`)에서 `customTitle`을 꺼내는 줄 아래에 추가:
 
