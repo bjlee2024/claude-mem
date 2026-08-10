@@ -69,6 +69,29 @@ export class SessionStore {
     this.dropDeadPendingMessagesColumns();
     this.ensurePendingMessagesToolUseIdColumn();
     this.dropWorkerPidColumn();
+    this.addGitUserColumns();
+  }
+
+  private addGitUserColumns(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(33) as SchemaVersion | undefined;
+
+    const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
+    if (!obsCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE observations ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to observations table');
+    }
+
+    const sessionCols = this.db.query('PRAGMA table_info(sdk_sessions)').all() as TableColumnInfo[];
+    if (!sessionCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE sdk_sessions ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to sdk_sessions table');
+    }
+
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
+
+    if (!applied) {
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
+    }
   }
 
   private dropWorkerPidColumn(): void {

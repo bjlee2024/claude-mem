@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { MigrationRunner } from '../../src/services/sqlite/migrations/runner.js';
+import { SessionStore } from '../../src/services/sqlite/SessionStore.js';
 
 const dirs: string[] = [];
 function tmpDb(): Database {
@@ -39,5 +40,25 @@ describe('git_user 마이그레이션', () => {
       "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='observations'"
     ).all() as Array<{ name: string }>;
     expect(indexes.map(i => i.name)).toContain('idx_observations_git_user');
+  });
+});
+
+describe('SessionStore 마이그레이션 (실제 런타임 경로)', () => {
+  it('MigrationRunner 없이 SessionStore만으로도 git_user 컬럼이 생긴다', () => {
+    const d = mkdtempSync(join(tmpdir(), 'gum-ss-'));
+    dirs.push(d);
+    const db = new Database(join(d, 'test.db'));
+    // MigrationRunner를 거치지 않는다 — 워커가 하는 것과 같은 방식.
+    new SessionStore(db);
+    expect(columnNames(db, 'observations')).toContain('git_user');
+    expect(columnNames(db, 'sdk_sessions')).toContain('git_user');
+  });
+
+  it('SessionStore를 두 번 만들어도 실패하지 않는다', () => {
+    const d = mkdtempSync(join(tmpdir(), 'gum-ss2-'));
+    dirs.push(d);
+    const db = new Database(join(d, 'test.db'));
+    new SessionStore(db);
+    expect(() => new SessionStore(db)).not.toThrow();
   });
 });
