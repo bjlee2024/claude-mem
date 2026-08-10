@@ -361,6 +361,7 @@ interface ObservationSearchArgs {
   projectId?: string;
   query: string;
   limit?: number;
+  gitUser?: string;
 }
 
 async function handleObservationSearch(
@@ -376,6 +377,7 @@ async function handleObservationSearch(
       projectId,
       query: args.query,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
     };
     const response = await ctx.client.searchObservations(request);
     return formatJsonResult(response);
@@ -648,13 +650,14 @@ NEVER fetch full details without filtering first. 10x token savings.`,
   },
   {
     name: 'observation_search',
-    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (required), projectId (optional), limit (default 20, max 100).',
+    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (required), projectId (optional), limit (default 20, max 100), gitUser (optional, filter by git author).',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'string' },
         query: { type: 'string', description: 'Search query (required)' },
         limit: { type: 'number', description: 'Max results (default 20, max 100)' },
+        gitUser: { type: 'string', description: 'Filter by git author (git config user.name)' },
       },
       required: ['query'],
       additionalProperties: false,

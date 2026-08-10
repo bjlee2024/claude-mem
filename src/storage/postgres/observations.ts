@@ -171,17 +171,26 @@ export class PostgresObservationRepository {
     teamId: string;
     query: string;
     limit?: number;
+    gitUser?: string | null;
   }): Promise<PostgresObservation[]> {
+    // Optional author filter on the JSONB metadata written by the git-author
+    // capture (Task 10). No new index — this query is already scoped by
+    // project_id, and the WHERE clause only appends the extra predicate when
+    // a gitUser is actually requested.
+    const gitUserClause = input.gitUser ? `AND metadata->>'gitUser' = $5` : '';
     const result = await this.client.query<ObservationRow>(
       `
         SELECT * FROM observations
         WHERE project_id = $1
           AND team_id = $2
           AND content_search @@ websearch_to_tsquery('english', $3)
+          ${gitUserClause}
         ORDER BY ts_rank(content_search, websearch_to_tsquery('english', $3)) DESC, updated_at DESC
         LIMIT $4
       `,
-      [input.projectId, input.teamId, input.query, input.limit ?? 20]
+      input.gitUser
+        ? [input.projectId, input.teamId, input.query, input.limit ?? 20, input.gitUser]
+        : [input.projectId, input.teamId, input.query, input.limit ?? 20]
     );
     return result.rows.map(mapObservationRow);
   }

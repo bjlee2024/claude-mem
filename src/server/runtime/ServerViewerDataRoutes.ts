@@ -36,6 +36,7 @@ export interface ViewerObservation {
   files_read: string | null;
   files_modified: string | null;
   prompt_number: number | null;
+  gitUser: string | null;
   created_at: string;
   created_at_epoch: number;
 }
@@ -80,6 +81,7 @@ export function mapObservationToViewer(row: ViewerObservationRow): ViewerObserva
     files_read: asStringArrayJson(meta.files_read),
     files_modified: asStringArrayJson(meta.files_modified),
     prompt_number: null,
+    gitUser: asStringOrNull(meta.gitUser),
     created_at: createdAt.toISOString(),
     created_at_epoch: createdAt.getTime(),
   };
@@ -114,6 +116,9 @@ function mapRowToObservation(row: ViewerObservationRow, idx: number, project: st
     platform_source: typeof meta.provider === 'string' ? meta.provider : undefined,
     type: typeof meta.type === 'string' ? meta.type : (row.kind || 'observation'),
     title: typeof meta.title === 'string' ? meta.title : null,
+    // Not folded into title — HumanFormatter/AgentFormatter join git_user and
+    // title at render time (formatObservationTitle), same as the local runtime.
+    git_user: typeof meta.gitUser === 'string' ? meta.gitUser : null,
     subtitle: typeof meta.subtitle === 'string' ? meta.subtitle : null,
     narrative: typeof meta.narrative === 'string' ? meta.narrative
       : (typeof row.content === 'string' ? row.content : null),
