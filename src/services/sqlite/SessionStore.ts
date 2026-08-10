@@ -1685,7 +1685,8 @@ export class SessionStore {
     project: string,
     userPrompt: string,
     customTitle?: string,
-    platformSource?: string
+    platformSource?: string,
+    gitUser?: string | null
   ): number {
     const now = new Date();
     const nowEpoch = now.getTime();
@@ -1732,9 +1733,9 @@ export class SessionStore {
 
     this.db.prepare(`
       INSERT INTO sdk_sessions
-      (content_session_id, memory_session_id, project, platform_source, user_prompt, custom_title, started_at, started_at_epoch, status)
-      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(contentSessionId, project, normalizedPlatformSource, userPrompt, resolved.customTitle || null, now.toISOString(), nowEpoch);
+      (content_session_id, memory_session_id, project, platform_source, user_prompt, custom_title, git_user, started_at, started_at_epoch, status)
+      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'active')
+    `).run(contentSessionId, project, normalizedPlatformSource, userPrompt, resolved.customTitle || null, gitUser ?? null, now.toISOString(), nowEpoch);
 
     const row = this.db.prepare('SELECT id FROM sdk_sessions WHERE content_session_id = ?')
       .get(contentSessionId) as { id: number };

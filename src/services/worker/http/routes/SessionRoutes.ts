@@ -182,6 +182,7 @@ export class SessionRoutes extends BaseRouteHandler {
     prompt: z.string().optional(),
     platformSource: z.string().optional(),
     customTitle: z.string().optional(),
+    gitUser: z.string().optional(),
   }).passthrough();
 
   private static readonly observationsByClaudeIdSchema = z.object({
@@ -315,6 +316,9 @@ export class SessionRoutes extends BaseRouteHandler {
     const rawPrompt = typeof req.body.prompt === 'string' ? req.body.prompt : undefined;
     const platformSource = normalizePlatformSource(req.body.platformSource);
     const customTitle = req.body.customTitle || undefined;
+    const gitUser = typeof req.body.gitUser === 'string' && req.body.gitUser.trim() !== ''
+      ? req.body.gitUser
+      : null;
 
     if (rawPrompt && isInternalProtocolPayload(rawPrompt)) {
       logger.debug('HTTP', 'session-init: skipping internal protocol payload before session creation', { contentSessionId });
@@ -349,7 +353,7 @@ export class SessionRoutes extends BaseRouteHandler {
 
     const store = this.dbManager.getSessionStore();
 
-    const sessionDbId = store.createSDKSession(contentSessionId, project, prompt, customTitle, platformSource);
+    const sessionDbId = store.createSDKSession(contentSessionId, project, prompt, customTitle, platformSource, gitUser);
 
     const dbSession = store.getSessionById(sessionDbId);
     const isNewSession = !dbSession?.memory_session_id;
