@@ -257,7 +257,7 @@ export class SearchManager {
             observations = this.sessionStore.getObservationsByIds(obsIds, obsOptions);
           }
           if (sessionIds.length > 0) {
-            sessions = this.sessionStore.getSessionSummariesByIds(sessionIds, { orderBy: 'date_desc', limit: options.limit, project: options.project });
+            sessions = this.sessionStore.getSessionSummariesByIds(sessionIds, { orderBy: 'date_desc', limit: options.limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
           }
           if (promptIds.length > 0) {
             prompts = this.sessionStore.getUserPromptsByIds(promptIds, { orderBy: 'date_desc', limit: options.limit, project: options.project });
@@ -737,7 +737,7 @@ export class SearchManager {
             }
 
             if (rankedIds.length > 0) {
-              results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+              results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
               results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
             }
           } catch (chromaError) {
@@ -800,7 +800,7 @@ export class SearchManager {
           }
 
           if (rankedIds.length > 0) {
-            results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+            results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
             results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
           }
         } catch (chromaError) {
@@ -869,7 +869,7 @@ export class SearchManager {
         }
 
         if (rankedIds.length > 0) {
-          results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+          results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
           results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
         }
       }
@@ -933,7 +933,7 @@ export class SearchManager {
 
           if (recentIds.length > 0) {
             const limit = options.limit || 20;
-            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project });
+            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
             logger.debug('SEARCH', 'Hydrated observations from SQLite', { count: results.length });
           }
         }
@@ -1008,7 +1008,7 @@ export class SearchManager {
 
           if (recentIds.length > 0) {
             const limit = options.limit || 20;
-            results = this.sessionStore.getSessionSummariesByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project });
+            results = this.sessionStore.getSessionSummariesByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
             logger.debug('SEARCH', 'Hydrated sessions from SQLite', { count: results.length });
           }
         }
@@ -1438,7 +1438,7 @@ export class SearchManager {
   }
 
   async getTimelineByQuery(args: any): Promise<any> {
-    const { query, mode = 'auto', depth_before, depth_after, limit = 5, project } = args;
+    const { query, mode = 'auto', depth_before, depth_after, limit = 5, project, gitUser, platformSource } = args;
     const depthBefore = depth_before != null ? Number(depth_before) : 10;
     const depthAfter = depth_after != null ? Number(depth_after) : 10;
     const cwd = process.cwd();
@@ -1473,7 +1473,7 @@ export class SearchManager {
           logger.debug('SEARCH', 'Results within 90-day window', { count: recentIds.length });
 
           if (recentIds.length > 0) {
-            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit: mode === 'auto' ? 1 : limit, project });
+            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit: mode === 'auto' ? 1 : limit, project, gitUser, platformSource });
             logger.debug('SEARCH', 'Hydrated observations from SQLite', { count: results.length });
           }
         }

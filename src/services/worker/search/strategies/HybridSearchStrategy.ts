@@ -46,7 +46,7 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
     concept: string,
     options: StrategySearchOptions
   ): Promise<StrategySearchResult> {
-    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy } = options;
+    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy, gitUser, platformSource } = options;
     const filterOptions = { limit, project, dateRange, orderBy };
 
     logger.debug('SEARCH', 'HybridSearchStrategy: findByConcept', { concept });
@@ -59,14 +59,14 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
 
     const ids = metadataResults.map(obs => obs.id);
 
-    return await this.rankAndHydrate(concept, ids, limit);
+    return await this.rankAndHydrate(concept, ids, limit, gitUser, platformSource);
   }
 
   async findByType(
     type: string | string[],
     options: StrategySearchOptions
   ): Promise<StrategySearchResult> {
-    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy } = options;
+    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy, gitUser, platformSource } = options;
     const filterOptions = { limit, project, dateRange, orderBy };
     const typeStr = Array.isArray(type) ? type.join(', ') : type;
 
@@ -80,7 +80,7 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
 
     const ids = metadataResults.map(obs => obs.id);
 
-    return await this.rankAndHydrate(typeStr, ids, limit);
+    return await this.rankAndHydrate(typeStr, ids, limit, gitUser, platformSource);
   }
 
   async findByFile(
@@ -91,7 +91,7 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
     sessions: SessionSummarySearchResult[];
     usedChroma: boolean;
   }> {
-    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy } = options;
+    const { limit = SEARCH_CONSTANTS.DEFAULT_LIMIT, project, dateRange, orderBy, gitUser, platformSource } = options;
     const filterOptions = { limit, project, dateRange, orderBy };
 
     logger.debug('SEARCH', 'HybridSearchStrategy: findByFile', { filePath });
@@ -105,13 +105,15 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
 
     const ids = metadataResults.observations.map(obs => obs.id);
 
-    return await this.rankAndHydrateForFile(filePath, ids, limit, sessions);
+    return await this.rankAndHydrateForFile(filePath, ids, limit, sessions, gitUser, platformSource);
   }
 
   private async rankAndHydrate(
     queryText: string,
     metadataIds: number[],
-    limit: number
+    limit: number,
+    gitUser?: string,
+    platformSource?: string
   ): Promise<StrategySearchResult> {
     const chromaResults = await this.chromaSync.queryChroma(
       queryText,
@@ -121,7 +123,7 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
     const rankedIds = this.intersectWithRanking(metadataIds, chromaResults.ids);
 
     if (rankedIds.length > 0) {
-      const observations = this.sessionStore.getObservationsByIds(rankedIds, { limit });
+      const observations = this.sessionStore.getObservationsByIds(rankedIds, { limit, gitUser, platformSource });
       observations.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
 
       return {
@@ -138,7 +140,9 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
     filePath: string,
     metadataIds: number[],
     limit: number,
-    sessions: SessionSummarySearchResult[]
+    sessions: SessionSummarySearchResult[],
+    gitUser?: string,
+    platformSource?: string
   ): Promise<{ observations: ObservationSearchResult[]; sessions: SessionSummarySearchResult[]; usedChroma: boolean }> {
     const chromaResults = await this.chromaSync.queryChroma(
       filePath,
@@ -148,7 +152,7 @@ export class HybridSearchStrategy extends BaseSearchStrategy implements SearchSt
     const rankedIds = this.intersectWithRanking(metadataIds, chromaResults.ids);
 
     if (rankedIds.length > 0) {
-      const observations = this.sessionStore.getObservationsByIds(rankedIds, { limit });
+      const observations = this.sessionStore.getObservationsByIds(rankedIds, { limit, gitUser, platformSource });
       observations.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
 
       return { observations, sessions, usedChroma: true };

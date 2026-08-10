@@ -97,3 +97,87 @@ describe('gitUser filter end-to-end wiring (SearchManager.search)', () => {
     expect(response.observations.length).toBe(2);
   });
 });
+
+// Regression coverage: the test above forces chromaSync: null, which only
+// exercises the FTS5 fallback path. Chroma is enabled by default (unless
+// CLAUDE_MEM_CHROMA_ENABLED=false), and that path hydrates results via
+// SessionStore.getObservationsByIds — a call site that previously dropped
+// gitUser entirely. This block exercises that default-runtime path with a
+// fake ChromaSync that actually returns hits.
+describe('gitUser filter end-to-end wiring (Chroma-enabled path)', () => {
+  let db: Database;
+  let store: SessionStore;
+  let search: SessionSearch;
+  let manager: SearchManager;
+
+  const PROJECT = 'git-user-wiring-chroma-project';
+  let obsIdAlice: number;
+  let obsIdBob: number;
+
+  function seedObservation(contentSessionId: string, memorySessionId: string, gitUser: string, title: string): number {
+    const sdkId = store.createSDKSession(contentSessionId, PROJECT, 'prompt', undefined, undefined, gitUser);
+    store.updateMemorySessionId(sdkId, memorySessionId);
+    const { id } = store.storeObservation(memorySessionId, PROJECT, {
+      type: 'discovery',
+      title,
+      subtitle: null,
+      facts: [],
+      narrative: 'deployment wiring narrative',
+      concepts: [],
+      files_read: [],
+      files_modified: [],
+      git_user: gitUser,
+    }, 1);
+    return id;
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    db.run('PRAGMA foreign_keys = ON');
+    store = new SessionStore(db);
+    search = new SessionSearch(db);
+
+    obsIdAlice = seedObservation('c1', 'm1', 'bjlee2024', 'deployment by first user');
+    obsIdBob = seedObservation('c2', 'm2', 'superman', 'deployment by second user');
+
+    const recentEpoch = Date.now() - 1000 * 60 * 60;
+    const fakeChromaSync = {
+      queryChroma: async () => ({
+        ids: [obsIdAlice, obsIdBob],
+        distances: [0.1, 0.2],
+        metadatas: [
+          { doc_type: 'observation', created_at_epoch: recentEpoch },
+          { doc_type: 'observation', created_at_epoch: recentEpoch },
+        ],
+      }),
+    };
+
+    manager = new SearchManager(search, store, fakeChromaSync as any, new FormattingService(), new TimelineService());
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('SearchManager.search honors gitUser when Chroma returns hits (default runtime path)', async () => {
+    const response = await manager.search({
+      query: 'deployment',
+      project: PROJECT,
+      gitUser: 'bjlee2024',
+      format: 'json',
+    });
+
+    expect(response.observations.length).toBe(1);
+    expect(response.observations[0].git_user).toBe('bjlee2024');
+  });
+
+  it('SearchManager.search with no gitUser returns both authors via the Chroma path', async () => {
+    const response = await manager.search({
+      query: 'deployment',
+      project: PROJECT,
+      format: 'json',
+    });
+
+    expect(response.observations.length).toBe(2);
+  });
+});

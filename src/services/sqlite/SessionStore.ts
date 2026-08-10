@@ -1496,11 +1496,11 @@ export class SessionStore {
 
   getObservationsByIds(
     ids: number[],
-    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; type?: string | string[]; concepts?: string | string[]; files?: string | string[] } = {}
+    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; type?: string | string[]; concepts?: string | string[]; files?: string | string[]; gitUser?: string; platformSource?: string } = {}
   ): ObservationSearchResult[] {
     if (ids.length === 0) return [];
 
-    const { orderBy = 'date_desc', limit, project, type, concepts, files } = options;
+    const { orderBy = 'date_desc', limit, project, type, concepts, files, gitUser, platformSource } = options;
     const preserveIdOrder = orderBy === 'relevance';
     const orderClause = preserveIdOrder ? '' : `ORDER BY created_at_epoch ${orderBy === 'date_asc' ? 'ASC' : 'DESC'}`;
     const limitClause = limit ? `LIMIT ${limit}` : '';
@@ -1512,6 +1512,24 @@ export class SessionStore {
     if (project) {
       additionalConditions.push('project = ?');
       params.push(project);
+    }
+
+    // Author/source scoping: mirrors SessionSearch.buildFilterClause. Resolved
+    // via a memory_session_id-keyed sdk_sessions subquery rather than reading
+    // observations.git_user/platform_source directly, so this stays the same
+    // source of truth as every other filtered query path in the codebase.
+    if (gitUser) {
+      additionalConditions.push(
+        '(SELECT s.git_user FROM sdk_sessions s WHERE s.memory_session_id = observations.memory_session_id) = ?'
+      );
+      params.push(gitUser);
+    }
+
+    if (platformSource) {
+      additionalConditions.push(
+        `COALESCE((SELECT s.platform_source FROM sdk_sessions s WHERE s.memory_session_id = observations.memory_session_id), '${DEFAULT_PLATFORM_SOURCE}') = ?`
+      );
+      params.push(platformSource);
     }
 
     if (type) {
@@ -2163,21 +2181,43 @@ export class SessionStore {
 
   getSessionSummariesByIds(
     ids: number[],
-    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string } = {}
+    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; gitUser?: string; platformSource?: string } = {}
   ): SessionSummarySearchResult[] {
     if (ids.length === 0) return [];
 
-    const { orderBy = 'date_desc', limit, project } = options;
+    const { orderBy = 'date_desc', limit, project, gitUser, platformSource } = options;
     const preserveIdOrder = orderBy === 'relevance';
     const orderClause = preserveIdOrder ? '' : `ORDER BY created_at_epoch ${orderBy === 'date_asc' ? 'ASC' : 'DESC'}`;
     const limitClause = limit ? `LIMIT ${limit}` : '';
     const placeholders = ids.map(() => '?').join(',');
     const params: any[] = [...ids];
+    const additionalConditions: string[] = [];
 
-    const whereClause = project
-      ? `WHERE id IN (${placeholders}) AND project = ?`
+    if (project) {
+      additionalConditions.push('project = ?');
+      params.push(project);
+    }
+
+    // Author/source scoping: session_summaries has no git_user/platform_source
+    // column of its own, so resolve via the same memory_session_id-keyed
+    // sdk_sessions subquery SessionSearch.buildFilterClause uses.
+    if (gitUser) {
+      additionalConditions.push(
+        '(SELECT s.git_user FROM sdk_sessions s WHERE s.memory_session_id = session_summaries.memory_session_id) = ?'
+      );
+      params.push(gitUser);
+    }
+
+    if (platformSource) {
+      additionalConditions.push(
+        `COALESCE((SELECT s.platform_source FROM sdk_sessions s WHERE s.memory_session_id = session_summaries.memory_session_id), '${DEFAULT_PLATFORM_SOURCE}') = ?`
+      );
+      params.push(platformSource);
+    }
+
+    const whereClause = additionalConditions.length > 0
+      ? `WHERE id IN (${placeholders}) AND ${additionalConditions.join(' AND ')}`
       : `WHERE id IN (${placeholders})`;
-    if (project) params.push(project);
 
     const stmt = this.db.prepare(`
       SELECT * FROM session_summaries
