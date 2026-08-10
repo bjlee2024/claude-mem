@@ -229,7 +229,10 @@ git commit -m "feat: git config user.name 조회 유틸 추가"
 
 **Files:**
 - Modify: `src/services/sqlite/migrations/runner.ts`
+- Modify: `src/services/sqlite/SessionStore.ts:32-71`, `:879` 부근 (**실제 런타임 경로**)
 - Test: `tests/sqlite/git-user-migration.test.ts`
+
+**주의 — 마이그레이션 시스템이 두 개다.** `MigrationRunner`(`migrations/runner.ts`)는 `ClaudeMemDatabase`를 통해서만 실행되는데, `ClaudeMemDatabase`는 `src/` 안에서 프로덕션 진입점이 호출하지 않는다. 실제 워커는 `worker-service.ts` → `DatabaseManager.initialize()` → `new Database(DB_PATH)` + `new SessionStore(db)` 경로를 타고, **`SessionStore` 생성자(`:48-71`)가 자체 마이그레이션 체인 22개를 실행한다.** `addObservationSubagentColumns`는 두 파일에 중복 구현되어 있다(`runner.ts:775`, `SessionStore.ts:879`). 한쪽만 고치면 테스트는 통과하지만 실사용 DB에는 컬럼이 생기지 않는다. **양쪽 모두 고쳐야 한다.**
 
 **Interfaces:**
 - Consumes: 없음
@@ -316,10 +319,64 @@ Expected: FAIL — `expect(received).toContain("git_user")` 실패
 
 `runner.ts`에서 `addObservationSubagentColumns()`를 호출하는 지점을 찾아(`grep -n "addObservationSubagentColumns()" src/services/sqlite/migrations/runner.ts`) 그 **바로 다음 줄에** `this.addGitUserColumns();`를 추가한다.
 
+- [ ] **Step 4b: SessionStore의 마이그레이션 체인에도 동일 적용 (실제 런타임 경로)**
+
+`src/services/sqlite/SessionStore.ts`에 같은 일을 하는 private 메서드를 추가한다. 이 파일의 관례를 따라 `schema_versions`에 버전을 기록한다 — 같은 파일의 `addObservationSubagentColumns()`(`:879`)와 `dropWorkerPidColumn()`(`:74`)이 그 패턴이다. 사용되지 않은 다음 버전 번호를 쓴다(현재 32까지 사용 중이므로 33).
+
+```typescript
+  private addGitUserColumns(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(33) as SchemaVersion | undefined;
+    if (applied) return;
+
+    const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
+    if (!obsCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE observations ADD COLUMN git_user TEXT');
+    }
+
+    const sessionCols = this.db.query('PRAGMA table_info(sdk_sessions)').all() as TableColumnInfo[];
+    if (!sessionCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE sdk_sessions ADD COLUMN git_user TEXT');
+    }
+
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
+    this.db.run('INSERT OR IGNORE INTO schema_versions (version) VALUES (33)');
+  }
+```
+
+`schema_versions` INSERT의 정확한 컬럼 구성은 같은 파일의 다른 마이그레이션이 쓰는 형태를 그대로 따른다. 생성자 체인(`:70` 부근, `dropWorkerPidColumn()` 호출 뒤)에 `this.addGitUserColumns();`를 추가한다.
+
+- [ ] **Step 4c: SessionStore 경로를 검증하는 테스트 추가**
+
+`tests/sqlite/git-user-migration.test.ts`에 추가한다. **이 테스트가 없으면 실사용 경로가 검증되지 않는다:**
+
+```typescript
+import { SessionStore } from '../../src/services/sqlite/SessionStore.js';
+
+describe('SessionStore 마이그레이션 (실제 런타임 경로)', () => {
+  it('MigrationRunner 없이 SessionStore만으로도 git_user 컬럼이 생긴다', () => {
+    const d = mkdtempSync(join(tmpdir(), 'gum-ss-'));
+    dirs.push(d);
+    const db = new Database(join(d, 'test.db'));
+    // MigrationRunner를 거치지 않는다 — 워커가 하는 것과 같은 방식.
+    new SessionStore(db);
+    expect(columnNames(db, 'observations')).toContain('git_user');
+    expect(columnNames(db, 'sdk_sessions')).toContain('git_user');
+  });
+
+  it('SessionStore를 두 번 만들어도 실패하지 않는다', () => {
+    const d = mkdtempSync(join(tmpdir(), 'gum-ss2-'));
+    dirs.push(d);
+    const db = new Database(join(d, 'test.db'));
+    new SessionStore(db);
+    expect(() => new SessionStore(db)).not.toThrow();
+  });
+});
+```
+
 - [ ] **Step 5: 테스트 통과 확인**
 
 Run: `bun test tests/sqlite/git-user-migration.test.ts`
-Expected: PASS — 3 pass
+Expected: PASS — 5 pass
 
 - [ ] **Step 6: 기존 sqlite 테스트 회귀 확인**
 
