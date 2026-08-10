@@ -547,7 +547,12 @@ NEVER fetch full details without filtering first. 10x token savings.`,
             projectId = await effectiveProjectId(ctx, undefined);
           }
           const limit = typeof args.limit === 'number' ? args.limit : undefined;
-          const response = await ctx.client.searchObservations({ projectId, query: args.query, ...(limit !== undefined ? { limit } : {}) });
+          const response = await ctx.client.searchObservations({
+            projectId,
+            query: args.query,
+            ...(limit !== undefined ? { limit } : {}),
+            ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
+          });
           return formatJsonResult(response);
         } catch (error) {
           return formatToolError(error);
