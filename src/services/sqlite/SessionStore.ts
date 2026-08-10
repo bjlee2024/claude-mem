@@ -73,7 +73,7 @@ export class SessionStore {
   }
 
   private addGitUserColumns(): void {
-    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(33) as SchemaVersion | undefined;
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(35) as SchemaVersion | undefined;
 
     const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
     if (!obsCols.some(c => c.name === 'git_user')) {
@@ -90,7 +90,7 @@ export class SessionStore {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
 
     if (!applied) {
-      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(33, new Date().toISOString());
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(35, new Date().toISOString());
     }
   }
 
@@ -1440,6 +1440,25 @@ export class SessionStore {
       user_prompt: string | null;
       has_summary: boolean;
     }>;
+  }
+
+  // Used to resolve CLAUDE_MEM_CONTEXT_GIT_USER=me in the worker daemon, which
+  // has no access to the user's real working directory (it serves requests
+  // that never carry the caller's cwd). The most recently started session for
+  // this project was captured at the hook's real cwd (session-init.ts), so its
+  // git_user is the same identity capture would have stamped onto a new
+  // observation right now — unlike shelling out to git from the daemon's own
+  // (arbitrary) cwd.
+  getMostRecentGitUserForProject(project: string): string | null {
+    const stmt = this.db.prepare(`
+      SELECT git_user FROM sdk_sessions
+      WHERE project = ? AND git_user IS NOT NULL
+      ORDER BY started_at_epoch DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(project) as { git_user: string | null } | undefined;
+    return row?.git_user ?? null;
   }
 
   getObservationsForSession(memorySessionId: string): Array<{

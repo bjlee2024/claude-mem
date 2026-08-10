@@ -23,7 +23,16 @@ export function resolveGitUserFilter(
   return value;
 }
 
-export function loadContextConfig(): ContextConfig {
+/**
+ * @param resolveMe  Resolves what "me" means for CLAUDE_MEM_CONTEXT_GIT_USER=me.
+ *   Defaults to reading git identity from the current process's cwd — correct
+ *   for CLI/client invocations, but WRONG inside the worker daemon (it serves
+ *   requests with no access to the caller's real cwd; see SessionStore's
+ *   getMostRecentGitUserForProject, which generateContext() passes instead).
+ */
+export function loadContextConfig(
+  resolveMe: () => string | null = () => getGitUser(process.cwd())
+): ContextConfig {
   const settingsPath = paths.settings();
   const settings = SettingsDefaultsManager.loadFromFile(settingsPath);
 
@@ -46,7 +55,7 @@ export function loadContextConfig(): ContextConfig {
     showLastMessage: settings.CLAUDE_MEM_CONTEXT_SHOW_LAST_MESSAGE === 'true',
     gitUserFilter: resolveGitUserFilter(
       settings.CLAUDE_MEM_CONTEXT_GIT_USER,
-      () => getGitUser(process.cwd())
+      resolveMe
     ),
   };
 }

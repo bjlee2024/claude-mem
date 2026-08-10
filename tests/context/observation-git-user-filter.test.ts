@@ -107,6 +107,42 @@ describe('queryObservations gitUserFilter', () => {
   });
 });
 
+describe('SessionStore.getMostRecentGitUserForProject', () => {
+  // Regression coverage: CLAUDE_MEM_CONTEXT_GIT_USER=me must resolve against
+  // the identity actually captured for this project's sessions, not whatever
+  // git identity the worker daemon's own (arbitrary) process cwd would report.
+  it("returns the most recently started session's git_user for the project", () => {
+    const db = new SessionStore(tmpDb());
+    // tmpDb() seeds acme/widget sessions m1 (bjlee2024), m2 (superman), m3 (null),
+    // all with started_at_epoch=0 in insertion order — m3 is inserted last, so it
+    // is "most recent", but its own git_user is null (it has no owning session row
+    // git_user set — sdk_sessions.git_user is never populated by tmpDb's insertSession,
+    // only observations.git_user is). Insert a session-level git_user for m3 directly
+    // to exercise the "most recent has an author" branch precisely.
+    db.db.run("UPDATE sdk_sessions SET git_user = 'work-alice', started_at_epoch = 100 WHERE memory_session_id = 'm3'");
+    expect(db.getMostRecentGitUserForProject('acme/widget')).toBe('work-alice');
+  });
+
+  it('falls back to an older session when the most recent has no git_user', () => {
+    const db = new SessionStore(tmpDb());
+    db.db.run("UPDATE sdk_sessions SET git_user = 'bjlee2024', started_at_epoch = 50 WHERE memory_session_id = 'm1'");
+    db.db.run("UPDATE sdk_sessions SET started_at_epoch = 100 WHERE memory_session_id = 'm3'"); // most recent, git_user still NULL
+    expect(db.getMostRecentGitUserForProject('acme/widget')).toBe('bjlee2024');
+  });
+
+  it('returns null when no session for the project has a git_user (never an empty context)', () => {
+    const db = new SessionStore(tmpDb());
+    expect(db.getMostRecentGitUserForProject('acme/widget')).toBeNull();
+  });
+
+  it('is scoped to the given project', () => {
+    const db = new SessionStore(tmpDb());
+    db.db.run("UPDATE sdk_sessions SET git_user = 'bjlee2024' WHERE memory_session_id = 'm4'"); // acme/other
+    expect(db.getMostRecentGitUserForProject('acme/widget')).toBeNull();
+    expect(db.getMostRecentGitUserForProject('acme/other')).toBe('bjlee2024');
+  });
+});
+
 describe('queryObservationsMulti gitUserFilter', () => {
   it('필터가 없으면 전체 프로젝트의 모든 작성자 관측을 반환한다', () => {
     const db = new SessionStore(tmpDb());

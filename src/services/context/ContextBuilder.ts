@@ -157,17 +157,11 @@ export async function generateContext(
   input?: ContextInput,
   forHuman: boolean = false
 ): Promise<string> {
-  const config = loadContextConfig();
   const cwd = input?.cwd ?? process.cwd();
   const context = getProjectContext(cwd);
 
   const projects = input?.projects?.length ? input.projects : context.allProjects;
   const project = projects[projects.length - 1] ?? context.primary;
-
-  if (input?.full) {
-    config.totalObservationCount = 999999;
-    config.sessionCount = 999999;
-  }
 
   const db = initializeDatabase();
   if (!db) {
@@ -175,6 +169,18 @@ export async function generateContext(
   }
 
   try {
+    // "me" is resolved from the most recently started session's own stored
+    // git_user rather than shelling out to git from the daemon: this process
+    // serves HTTP requests with no access to the caller's real cwd, so
+    // getGitUser(process.cwd()) here would read whatever directory happened
+    // to launch the daemon, not the user's repo (see ContextConfigLoader.ts).
+    const config = loadContextConfig(() => db.getMostRecentGitUserForProject(project));
+
+    if (input?.full) {
+      config.totalObservationCount = 999999;
+      config.sessionCount = 999999;
+    }
+
     const observations = projects.length > 1
       ? queryObservationsMulti(db, projects, config)
       : queryObservations(db, project, config);
