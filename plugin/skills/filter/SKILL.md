@@ -39,7 +39,12 @@ Normalize that URL to `owner/repo`:
    (`user@host:owner/repo`, including host aliases like
    `github.com-medit`) — take everything after that `:` as the path.
    Otherwise take everything after the first `/` as the path.
-4. Split the path on `/` and take the last two segments as `owner/repo`.
+4. Split the path on `/`, drop any empty segments (a trailing slash leaves
+   one, e.g. `owner/repo/` splits to `owner`, `repo`, ``), and take the last
+   two remaining segments as `owner/repo`. If fewer than two segments
+   remain — a remote like `git@host:repo.git` or `https://host/repo`, which
+   has only one path segment — `owner/repo` cannot be derived this way; use
+   the repo-root-basename fallback below instead of guessing an `owner`.
 
 Do not just take "the last two path segments" of the raw URL — for an
 scp-style remote like `git@github.com-medit:bjlee2024/claude-mem.git`, that
@@ -83,9 +88,18 @@ Do not pass a `query`. Passing one turns this into a full-text search and
 changes the ordering.
 
 If the call fails specifically on resolving `project` (for example, a 403
-from a project-scoped setup that can't resolve/create projects), retry once
-without `project` — keep `gitUser` and `type: "observations"` if you have
-them.
+from a project-scoped setup that can't resolve/create projects) **and this
+call has a `gitUser`** (the `me`-with-a-resolved-author or literal-name
+case), retry once without `project`, keeping `gitUser` and
+`type: "observations"` — the worker falls back to a cwd-based project
+resolution that's often more accurate than the derivation in Step 1.
+
+Do not retry this way for `off`, or for `me` when git-user resolution
+already failed: with no `gitUser` to fall back on, dropping `project` would
+leave the call with no query and no filter (see Notes), which the worker
+rejects with a 400 — the same case Step 2 already tells you to avoid. In
+that situation, report the project-resolution failure to the user instead
+of retrying.
 
 **Step 4 — present the results.**
 
@@ -108,6 +122,18 @@ Offer `/claude-mem:filter off` as the way to see everything.
 
 - This command only reads. It does not change any setting, and it does not
   affect what gets injected at the start of the next session.
-- `search` requires either a `query` or a `project` filter (or a date range)
-  on this worker; a query-less call with neither is rejected with a 400.
-  This is why every example above always includes `project`.
+- Every call above passes `type: "observations"`, which routes the worker's
+  `search` to the observations table only (session summaries and user
+  prompts are skipped, and no other call this skill makes reaches them). For
+  a query-less observations search, the worker accepts any of `project`,
+  `gitUser`, `platformSource`, an observation-type, a date range, `concepts`,
+  or `files` as a satisfying filter — `gitUser` alone is enough, `project`
+  is not the only option. A call with none of those is rejected with a 400.
+  The examples above always include `project` anyway, to scope results to
+  this project.
+- This "any filter will do" rule is specific to observations. If `type`
+  were ever omitted from a call, the worker would also search user prompts,
+  which only recognize `project` and a date range as filters — a
+  `gitUser`-only call without `type: "observations"` 400s there even though
+  the observations-only version succeeds. That's the other reason
+  `type: "observations"` is mandatory in every call this skill makes.
