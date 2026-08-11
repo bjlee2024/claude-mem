@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { buildSearchQuery } from '../../src/storage/postgres/observations.js';
+import { SearchObservationsSchema } from '../../src/server/routes/v1/ServerV1PostgresRoutes.js';
 
 // Finds the placeholder number bound to a specific clause and returns the
 // param value stored at that index. This anchors an assertion to *which*
@@ -118,5 +119,23 @@ describe('buildSearchQuery', () => {
     expect(valueForClause(sql, params, /team_id = \$(\d+)/)).toBe('t1');
     expect(valueForClause(sql, params, /LIMIT \$(\d+)/)).toBe(20);
     expect(valueForClause(sql, params, /metadata->>'gitUser' = \$(\d+)/)).toBe('alice');
+  });
+});
+
+describe('/v1/search 요청 스키마', () => {
+  it('query 없이 gitUser만 있어도 통과한다', () => {
+    expect(SearchObservationsSchema.safeParse({ projectId: 'p1', gitUser: 'alice' }).success).toBe(true);
+  });
+
+  it('query가 아예 없어도 통과한다', () => {
+    expect(SearchObservationsSchema.safeParse({ projectId: 'p1' }).success).toBe(true);
+  });
+
+  it('빈 문자열 query는 여전히 거부한다', () => {
+    expect(SearchObservationsSchema.safeParse({ projectId: 'p1', query: '' }).success).toBe(false);
+  });
+
+  it('projectId는 여전히 필수다', () => {
+    expect(SearchObservationsSchema.safeParse({ gitUser: 'alice' }).success).toBe(false);
   });
 });
