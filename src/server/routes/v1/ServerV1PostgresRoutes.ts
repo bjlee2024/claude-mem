@@ -192,7 +192,8 @@ export class ServerV1PostgresRoutes implements RouteHandler {
       if (!teamId) return;
       if (!this.ensureProjectAllowed(req, res, body.projectId)) return;
 
-      const insertInput = this.toAgentEventInput(body, teamId);
+      const resolvedServerSessionId = await this.resolveServerSessionId(body, teamId);
+      const insertInput = this.toAgentEventInput(body, teamId, resolvedServerSessionId);
       let event: PostgresAgentEvent;
       let outbox: PostgresObservationGenerationJob | null = null;
       let enqueueState: EnqueueOutcome = 'skipped';
@@ -285,7 +286,18 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         return;
       }
 
-      const inputs = result.data.map(item => this.toAgentEventInput(item, teamId));
+      // Many events in one batch typically share a contentSessionId (e.g. an
+      // entire hook session's worth of tool_use events), so resolve each
+      // distinct (projectId, contentSessionId) pair once instead of issuing
+      // one server_sessions lookup per event.
+      const resolvedSessionIds = await this.resolveServerSessionIdsForBatch(result.data, teamId);
+      const inputs = result.data.map(item => {
+        const resolvedServerSessionId = item.serverSessionId
+          ?? (item.contentSessionId
+            ? resolvedSessionIds.get(this.sessionLookupKey(item.projectId, item.contentSessionId)) ?? null
+            : null);
+        return this.toAgentEventInput(item, teamId, resolvedServerSessionId);
+      });
 
       let inserted: { event: PostgresAgentEvent; outbox: PostgresObservationGenerationJob | null }[] = [];
       let enqueueResults: EnqueueOutcome[] = [];
@@ -1208,13 +1220,92 @@ export class ServerV1PostgresRoutes implements RouteHandler {
     return null;
   }
 
-  private toAgentEventInput(body: z.infer<typeof CreateAgentEventSchema>, teamId: string): CreatePostgresAgentEventInput {
+  // Hooks send `contentSessionId` (the client-generated session id) on every
+  // agent event but never `serverSessionId` — they don't know the server's
+  // UUID. `server_sessions.external_session_id` is set to the same value as
+  // `contentSessionId` (see session-init.ts), so when serverSessionId is
+  // absent we look the session up by (project_id, external_session_id)
+  // scoped to the caller's team. A miss (the session row doesn't exist yet)
+  // is NOT an error — the event is still ingested with serverSessionId
+  // null. Dropping a hook event because its session hasn't landed yet would
+  // be far worse than a missing author.
+  private sessionLookupKey(projectId: string, contentSessionId: string): string {
+    return `${projectId} ${contentSessionId}`;
+  }
+
+  private async resolveServerSessionId(
+    body: { serverSessionId?: string | null; contentSessionId?: string | null; projectId: string },
+    teamId: string,
+  ): Promise<string | null> {
+    if (body.serverSessionId) return body.serverSessionId;
+    if (!body.contentSessionId) return null;
+    const repo = new PostgresServerSessionsRepository(this.options.pool);
+    try {
+      const session = await repo.findByExternalIdForScope({
+        externalSessionId: body.contentSessionId,
+        projectId: body.projectId,
+        teamId,
+      });
+      return session?.id ?? null;
+    } catch (error) {
+      logger.warn('SESSION', 'Failed to resolve server session for event; ingesting without link', {
+        error,
+        projectId: body.projectId,
+        contentSessionId: body.contentSessionId,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Batch variant of resolveServerSessionId. Resolves each distinct
+   * (projectId, contentSessionId) pair with exactly one lookup, no matter
+   * how many events in the batch share it.
+   */
+  private async resolveServerSessionIdsForBatch(
+    events: { serverSessionId?: string | null; contentSessionId?: string | null; projectId: string }[],
+    teamId: string,
+  ): Promise<Map<string, string | null>> {
+    const pending = new Map<string, { projectId: string; contentSessionId: string }>();
+    for (const event of events) {
+      if (event.serverSessionId || !event.contentSessionId) continue;
+      const key = this.sessionLookupKey(event.projectId, event.contentSessionId);
+      if (!pending.has(key)) {
+        pending.set(key, { projectId: event.projectId, contentSessionId: event.contentSessionId });
+      }
+    }
+    const resolved = new Map<string, string | null>();
+    if (pending.size === 0) return resolved;
+    const repo = new PostgresServerSessionsRepository(this.options.pool);
+    await Promise.all(
+      Array.from(pending.entries()).map(async ([key, { projectId, contentSessionId }]) => {
+        try {
+          const session = await repo.findByExternalIdForScope({ externalSessionId: contentSessionId, projectId, teamId });
+          resolved.set(key, session?.id ?? null);
+        } catch (error) {
+          logger.warn('SESSION', 'Failed to resolve server session for batch event; ingesting without link', {
+            error,
+            projectId,
+            contentSessionId,
+          });
+          resolved.set(key, null);
+        }
+      })
+    );
+    return resolved;
+  }
+
+  private toAgentEventInput(
+    body: z.infer<typeof CreateAgentEventSchema>,
+    teamId: string,
+    resolvedServerSessionId: string | null,
+  ): CreatePostgresAgentEventInput {
     const sourceAdapter = body.sourceType ?? SOURCE_ADAPTER_DEFAULT;
     const occurredAtEpoch = typeof body.occurredAtEpoch === 'number' ? body.occurredAtEpoch : Date.now();
     return {
       projectId: body.projectId,
       teamId,
-      serverSessionId: body.serverSessionId ?? null,
+      serverSessionId: resolvedServerSessionId,
       sourceAdapter,
       sourceEventId: typeof (body as Record<string, unknown>).sourceEventId === 'string'
         ? ((body as Record<string, unknown>).sourceEventId as string)
