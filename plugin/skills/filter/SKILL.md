@@ -18,21 +18,39 @@ Show observations from a single git author on the current project.
 
 **Step 1 — resolve the project name.**
 
-Every call below needs `project`, or the search has no filter to run on and
-errors out (see Notes). The cheapest source is what's already on screen: the
-context block injected at session start opens with a line like
-`[owner/repo] recent context, ...` — reuse that `owner/repo` string if you can
-see it.
+Prefer what's already on screen: the context block injected at session start
+opens with a line like `[owner/repo] recent context, ...` — reuse that
+`owner/repo` string if you can see it. It needs no derivation and is always
+right.
 
-If it's not visible, derive it the same way claude-mem does:
+If it's not visible, derive it the same way claude-mem does
+(`src/utils/project-name.ts::parseOwnerRepo` — read it if anything below is
+ambiguous):
 
 ```bash
 git config --get remote.origin.url
 ```
 
-Normalize the URL to `owner/repo` (the last two path segments, minus a
-trailing `.git`). If the command fails or there's no `origin` remote, fall
-back to the basename of the current directory.
+Normalize that URL to `owner/repo`:
+
+1. Strip a trailing `.git`.
+2. Strip a leading `ssh://`, `https://`, `http://`, or `git://` scheme.
+3. If what's left has a `:` before the first `/` — the scp-style shorthand
+   (`user@host:owner/repo`, including host aliases like
+   `github.com-medit`) — take everything after that `:` as the path.
+   Otherwise take everything after the first `/` as the path.
+4. Split the path on `/` and take the last two segments as `owner/repo`.
+
+Do not just take "the last two path segments" of the raw URL — for an
+scp-style remote like `git@github.com-medit:bjlee2024/claude-mem.git`, that
+naive reading yields the whole
+`git@github.com-medit:bjlee2024/claude-mem` string, not `bjlee2024/claude-mem`.
+
+If the `git config` command fails or there's no `origin` remote, use the
+basename of the git repo root (`git rev-parse --show-toplevel`), not the
+basename of the current directory — they differ in subdirectories and
+worktrees. If it's not a git repo at all, fall back to the current
+directory's basename.
 
 **Step 2 — resolve the author.**
 
@@ -52,13 +70,22 @@ entirely; `project` alone is enough to satisfy the filter requirement.
 
 **Step 3 — query.**
 
-Call the `search` tool with no query term, so results come back newest-first:
+Call the `search` tool with no query term, so results come back newest-first.
+Always include `type: "observations"` — without it, the worker also
+searches session summaries and user prompts, and once the requested author's
+observations run out the list quietly fills with other people's prompts
+under this author's heading.
 
-- with an author: `search({ gitUser: "<resolved name>", project: "<resolved project>", limit: 20 })`
-- for `off`, or for `me` when git user resolution failed: `search({ project: "<resolved project>", limit: 20 })`
+- with an author: `search({ gitUser: "<resolved name>", project: "<resolved project>", type: "observations", limit: 20 })`
+- for `off`, or for `me` when git user resolution failed: `search({ project: "<resolved project>", type: "observations", limit: 20 })`
 
 Do not pass a `query`. Passing one turns this into a full-text search and
 changes the ordering.
+
+If the call fails specifically on resolving `project` (for example, a 403
+from a project-scoped setup that can't resolve/create projects), retry once
+without `project` — keep `gitUser` and `type: "observations"` if you have
+them.
 
 **Step 4 — present the results.**
 
@@ -81,7 +108,6 @@ Offer `/claude-mem:filter off` as the way to see everything.
 
 - This command only reads. It does not change any setting, and it does not
   affect what gets injected at the start of the next session.
-- `search` requires either a `query` or at least one filter (`project`,
-  `gitUser`, `type`, a date range, `concepts`, `files`, or `platformSource`);
-  a call with none of those is rejected with a 400. This is why every example
-  above always includes `project`.
+- `search` requires either a `query` or a `project` filter (or a date range)
+  on this worker; a query-less call with neither is rejected with a 400.
+  This is why every example above always includes `project`.

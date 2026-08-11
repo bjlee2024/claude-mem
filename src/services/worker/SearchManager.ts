@@ -306,6 +306,7 @@ export class SearchManager {
     }
 
     const totalResults = observations.length + sessions.length + prompts.length;
+    const queryLabel = query ? ` matching "${query}"` : '';
 
     if (format === 'json') {
       return {
@@ -329,7 +330,7 @@ export class SearchManager {
       return {
         content: [{
           type: 'text' as const,
-          text: `No results found matching "${query}"`
+          text: `No results found${queryLabel}`
         }]
       };
     }
@@ -374,7 +375,7 @@ export class SearchManager {
     const resultsByDate = groupByDate(limitedResults, item => item.created_at);
 
     const lines: string[] = [];
-    lines.push(`Found ${totalResults} result(s) matching "${query}" (${observations.length} obs, ${sessions.length} sessions, ${prompts.length} prompts)`);
+    lines.push(`Found ${totalResults} result(s)${queryLabel} (${observations.length} obs, ${sessions.length} sessions, ${prompts.length} prompts)`);
     lines.push('');
 
     for (const [day, dayResults] of resultsByDate) {
