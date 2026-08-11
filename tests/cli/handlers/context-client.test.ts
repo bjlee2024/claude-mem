@@ -258,6 +258,42 @@ describe('contextHandler — client runtime branch', () => {
     expect(result.exitCode).toBe(HOOK_EXIT_CODES.SUCCESS);
   });
 
+  it('maps metadata.gitUser to git_user so the author prefix renders', async () => {
+    // Regression test for the server-beta context mapper silently dropping
+    // meta.gitUser (postgres camelCase) instead of reading it into the
+    // snake_case Observation.git_user field renderContextFromObservations expects.
+    contextObservationsImpl = async () => ({
+      observations: [
+        {
+          id: 'mig-obs-154',
+          projectId: 'proj-id',
+          teamId: 'team-1',
+          serverSessionId: 'sess-abc',
+          kind: 'observation',
+          content: 'remembered: X',
+          metadata: {
+            type: 'observation',
+            title: 'Test Observation',
+            gitUser: 'alice',
+            subtitle: 'a subtitle',
+            narrative: 'remembered: X',
+            facts: null,
+            concepts: null,
+            created_at: '2025-01-15T10:00:00.000Z',
+          },
+        },
+      ],
+      context: 'remembered: X',
+    });
+
+    const { contextHandler } = await import('../../../src/cli/handlers/context.js');
+
+    const result = await contextHandler.execute(sessionStartInput());
+
+    const additionalContext = (result.hookSpecificOutput as { hookEventName: string; additionalContext: string }).additionalContext;
+    expect(additionalContext).toContain('by alice, Test Observation');
+  });
+
   it('returns empty additionalContext when observations array is empty', async () => {
     contextObservationsImpl = async () => ({
       observations: [],

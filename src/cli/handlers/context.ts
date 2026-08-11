@@ -99,6 +99,9 @@ export const contextHandler: EventHandler = {
             platform_source: typeof meta.provider === 'string' ? meta.provider : undefined,
             type: kind,
             title: typeof meta.title === 'string' ? meta.title : null,
+            // Not folded into title — HumanFormatter/AgentFormatter join git_user and
+            // title at render time (formatObservationTitle), same as the local runtime.
+            git_user: typeof meta.gitUser === 'string' ? meta.gitUser : null,
             subtitle: typeof meta.subtitle === 'string' ? meta.subtitle : null,
             narrative: typeof meta.narrative === 'string' ? meta.narrative
               : typeof o.content === 'string' ? String(o.content)

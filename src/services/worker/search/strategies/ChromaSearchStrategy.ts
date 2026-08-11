@@ -36,7 +36,9 @@ export class ChromaSearchStrategy extends BaseSearchStrategy implements SearchSt
       files,
       limit = SEARCH_CONSTANTS.DEFAULT_LIMIT,
       project,
-      orderBy = 'date_desc'
+      orderBy = 'date_desc',
+      gitUser,
+      platformSource
     } = options;
 
     if (!query) {
@@ -53,7 +55,7 @@ export class ChromaSearchStrategy extends BaseSearchStrategy implements SearchSt
 
     return await this.executeChromaSearch(query, whereFilter, {
       searchObservations, searchSessions, searchPrompts,
-      obsType, concepts, files, orderBy, limit, project
+      obsType, concepts, files, orderBy, limit, project, gitUser, platformSource
     });
   }
 
@@ -70,6 +72,8 @@ export class ChromaSearchStrategy extends BaseSearchStrategy implements SearchSt
       orderBy: 'relevance' | 'date_desc' | 'date_asc';
       limit: number;
       project?: string;
+      gitUser?: string;
+      platformSource?: string;
     }
   ): Promise<StrategySearchResult> {
     const chromaResults = await this.chromaSync.queryChroma(
@@ -96,13 +100,13 @@ export class ChromaSearchStrategy extends BaseSearchStrategy implements SearchSt
     const sqlOrderBy = options.orderBy;
 
     if (categorized.obsIds.length > 0) {
-      const obsOptions = { type: options.obsType, concepts: options.concepts, files: options.files, orderBy: sqlOrderBy, limit: options.limit, project: options.project };
+      const obsOptions = { type: options.obsType, concepts: options.concepts, files: options.files, orderBy: sqlOrderBy, limit: options.limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource };
       observations = this.sessionStore.getObservationsByIds(categorized.obsIds, obsOptions);
     }
 
     if (categorized.sessionIds.length > 0) {
       sessions = this.sessionStore.getSessionSummariesByIds(categorized.sessionIds, {
-        orderBy: sqlOrderBy, limit: options.limit, project: options.project
+        orderBy: sqlOrderBy, limit: options.limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource
       });
     }
 

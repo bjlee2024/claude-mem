@@ -8,6 +8,7 @@ import type {
 } from '../types.js';
 import { ModeManager } from '../../domain/ModeManager.js';
 import { formatObservationTokenDisplay } from '../TokenCalculator.js';
+import { formatObservationTitle } from '../../../shared/format-observation-title.js';
 
 function formatHeaderDateTime(): string {
   const now = new Date();
@@ -92,7 +93,7 @@ export function renderAgentTableRow(
   timeDisplay: string,
   _config: ContextConfig
 ): string {
-  const title = obs.title || 'Untitled';
+  const title = formatObservationTitle(obs.title, obs.git_user);
   const icon = ModeManager.getInstance().getTypeIcon(obs.type);
   const time = timeDisplay ? compactTime(timeDisplay) : '"';
 
@@ -106,7 +107,7 @@ export function renderAgentFullObservation(
   config: ContextConfig
 ): string[] {
   const output: string[] = [];
-  const title = obs.title || 'Untitled';
+  const title = formatObservationTitle(obs.title, obs.git_user);
   const icon = ModeManager.getInstance().getTypeIcon(obs.type);
   const time = timeDisplay ? compactTime(timeDisplay) : '"';
   const { readTokens, discoveryDisplay } = formatObservationTokenDisplay(obs, config);
@@ -167,6 +168,13 @@ export function renderAgentFooter(totalDiscoveryTokens: number, totalReadTokens:
   ];
 }
 
-export function renderAgentEmptyState(project: string): string {
-  return `# [${project}] recent context, ${formatHeaderDateTime()}\n\nNo previous sessions found.`;
+export function renderAgentEmptyState(project: string, gitUserFilter: string | null = null): string {
+  // Mirrors renderHumanEmptyState — an agent reading a filtered-empty
+  // context needs to know its own CLAUDE_MEM_CONTEXT_GIT_USER setting is
+  // why nothing came back, not that the project has no history at all.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
+  const message = gitUserFilter
+    ? `No observations from "${gitUserFilter}" found for this project yet — other authors may have history here.`
+    : 'No previous sessions found.';
+  return `# [${project}] recent context, ${formatHeaderDateTime()}${filterNote}\n\n${message}`;
 }

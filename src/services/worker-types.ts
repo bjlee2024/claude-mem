@@ -39,6 +39,7 @@ export interface ActiveSession {
   lastSummaryStored?: boolean;
   pendingAgentId?: string | null;
   pendingAgentType?: string | null;
+  gitUser?: string | null;
   abortReason?: 'idle' | 'shutdown' | 'overflow' | 'restart-guard' | 'quota' | string | null;
   respawnTimer?: ReturnType<typeof setTimeout>;
 }
@@ -118,6 +119,7 @@ export interface Observation {
   prompt_number: number;
   created_at: string;
   created_at_epoch: number;
+  git_user: string | null;
 }
 
 export interface Summary {

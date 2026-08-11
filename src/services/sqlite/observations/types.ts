@@ -11,6 +11,7 @@ export interface ObservationInput {
   files_modified: string[];
   agent_type?: string | null;
   agent_id?: string | null;
+  git_user?: string | null;
 }
 
 export interface StoreObservationResult {

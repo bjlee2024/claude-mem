@@ -9,6 +9,7 @@ import {
 } from './types.js';
 import { ModeManager } from '../../domain/ModeManager.js';
 import { formatTime, extractFirstFile, groupByDate, estimateTokens } from '../../../shared/timeline-formatting.js';
+import { formatObservationTitle } from '../../../shared/format-observation-title.js';
 
 const CHARS_PER_TOKEN_ESTIMATE = 4;
 
@@ -137,7 +138,7 @@ export class ResultFormatter {
     const id = `#${obs.id}`;
     const time = formatTime(obs.created_at_epoch);
     const icon = ModeManager.getInstance().getTypeIcon(obs.type);
-    const title = obs.title || 'Untitled';
+    const title = formatObservationTitle(obs.title, obs.git_user);
     const readTokens = this.estimateReadTokens(obs);
 
     const timeDisplay = time === lastTime ? '"' : time;
@@ -189,7 +190,7 @@ export class ResultFormatter {
     const id = `#${obs.id}`;
     const time = formatTime(obs.created_at_epoch);
     const icon = ModeManager.getInstance().getTypeIcon(obs.type);
-    const title = obs.title || 'Untitled';
+    const title = formatObservationTitle(obs.title, obs.git_user);
     const readTokens = this.estimateReadTokens(obs);
     const workEmoji = ModeManager.getInstance().getWorkEmoji(obs.type);
     const workTokens = obs.discovery_tokens || 0;

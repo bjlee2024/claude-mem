@@ -20,6 +20,7 @@ import {
 import type { TimelineData } from './search/index.js';
 import { ResultFormatter } from './search/ResultFormatter.js';
 import { ChromaUnavailableError } from './search/errors.js';
+import { formatObservationTitle } from '../../shared/format-observation-title.js';
 
 export class SearchManager {
   private orchestrator: SearchOrchestrator;
@@ -256,7 +257,7 @@ export class SearchManager {
             observations = this.sessionStore.getObservationsByIds(obsIds, obsOptions);
           }
           if (sessionIds.length > 0) {
-            sessions = this.sessionStore.getSessionSummariesByIds(sessionIds, { orderBy: 'date_desc', limit: options.limit, project: options.project });
+            sessions = this.sessionStore.getSessionSummariesByIds(sessionIds, { orderBy: 'date_desc', limit: options.limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
           }
           if (promptIds.length > 0) {
             prompts = this.sessionStore.getUserPromptsByIds(promptIds, { orderBy: 'date_desc', limit: options.limit, project: options.project });
@@ -584,7 +585,9 @@ export class SearchManager {
 
     if (query) {
       const anchorObs = filteredItems.find(item => item.type === 'observation' && item.data.id === anchorId);
-      const anchorTitle = anchorObs && anchorObs.type === 'observation' ? ((anchorObs.data as ObservationSearchResult).title || 'Untitled') : 'Unknown';
+      const anchorTitle = anchorObs && anchorObs.type === 'observation'
+        ? formatObservationTitle((anchorObs.data as ObservationSearchResult).title, (anchorObs.data as ObservationSearchResult).git_user)
+        : 'Unknown';
       lines.push(`# Timeline for query: "${query}"`);
       lines.push(`**Anchor:** Observation #${anchorId} - ${anchorTitle}`);
     } else {
@@ -672,7 +675,7 @@ export class SearchManager {
           const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
           const time = formatTime(item.epoch);
-          const title = obs.title || 'Untitled';
+          const title = formatObservationTitle(obs.title, obs.git_user);
           const tokens = estimateTokens(obs.narrative);
 
           const showTime = time !== lastTime;
@@ -734,7 +737,7 @@ export class SearchManager {
             }
 
             if (rankedIds.length > 0) {
-              results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+              results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
               results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
             }
           } catch (chromaError) {
@@ -797,7 +800,7 @@ export class SearchManager {
           }
 
           if (rankedIds.length > 0) {
-            results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+            results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
             results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
           }
         } catch (chromaError) {
@@ -866,7 +869,7 @@ export class SearchManager {
         }
 
         if (rankedIds.length > 0) {
-          results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20 });
+          results = this.sessionStore.getObservationsByIds(rankedIds, { limit: filters.limit || 20, gitUser: filters.gitUser, platformSource: filters.platformSource });
           results.sort((a, b) => rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id));
         }
       }
@@ -930,7 +933,7 @@ export class SearchManager {
 
           if (recentIds.length > 0) {
             const limit = options.limit || 20;
-            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project });
+            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
             logger.debug('SEARCH', 'Hydrated observations from SQLite', { count: results.length });
           }
         }
@@ -1005,7 +1008,7 @@ export class SearchManager {
 
           if (recentIds.length > 0) {
             const limit = options.limit || 20;
-            results = this.sessionStore.getSessionSummariesByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project });
+            results = this.sessionStore.getSessionSummariesByIds(recentIds, { orderBy: 'date_desc', limit, project: options.project, gitUser: options.gitUser, platformSource: options.platformSource });
             logger.debug('SEARCH', 'Hydrated sessions from SQLite', { count: results.length });
           }
         }
@@ -1206,7 +1209,7 @@ export class SearchManager {
           lines.push('');
           lines.push(`**Observations (${observations.length}):**`);
           for (const obs of observations) {
-            lines.push(`- ${obs.title}`);
+            lines.push(`- ${formatObservationTitle(obs.title, obs.git_user)}`);
           }
         } else {
           lines.push('');
@@ -1409,7 +1412,7 @@ export class SearchManager {
           const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
           const time = formatTime(item.epoch);
-          const title = obs.title || 'Untitled';
+          const title = formatObservationTitle(obs.title, obs.git_user);
           const tokens = estimateTokens(obs.narrative);
 
           const showTime = time !== lastTime;
@@ -1435,7 +1438,7 @@ export class SearchManager {
   }
 
   async getTimelineByQuery(args: any): Promise<any> {
-    const { query, mode = 'auto', depth_before, depth_after, limit = 5, project } = args;
+    const { query, mode = 'auto', depth_before, depth_after, limit = 5, project, gitUser, platformSource } = args;
     const depthBefore = depth_before != null ? Number(depth_before) : 10;
     const depthAfter = depth_after != null ? Number(depth_after) : 10;
     const cwd = process.cwd();
@@ -1470,7 +1473,7 @@ export class SearchManager {
           logger.debug('SEARCH', 'Results within 90-day window', { count: recentIds.length });
 
           if (recentIds.length > 0) {
-            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit: mode === 'auto' ? 1 : limit, project });
+            results = this.sessionStore.getObservationsByIds(recentIds, { orderBy: 'date_desc', limit: mode === 'auto' ? 1 : limit, project, gitUser, platformSource });
             logger.debug('SEARCH', 'Hydrated observations from SQLite', { count: results.length });
           }
         }
@@ -1513,7 +1516,7 @@ export class SearchManager {
 
       for (let i = 0; i < results.length; i++) {
         const obs = results[i];
-        const title = obs.title || `Observation #${obs.id}`;
+        const title = formatObservationTitle(obs.title, obs.git_user);
         const date = new Date(obs.created_at_epoch).toLocaleString();
         const type = obs.type ? `[${obs.type}]` : '';
 
@@ -1564,7 +1567,7 @@ export class SearchManager {
       const lines: string[] = [];
 
       lines.push(`# Timeline for query: "${query}"`);
-      lines.push(`**Anchor:** Observation #${topResult.id} - ${topResult.title || 'Untitled'}`);
+      lines.push(`**Anchor:** Observation #${topResult.id} - ${formatObservationTitle(topResult.title, topResult.git_user)}`);
       lines.push(`**Window:** ${depthBefore} records before -> ${depthAfter} records after | **Items:** ${filteredItems?.length ?? 0}`);
       lines.push('');
 
@@ -1642,7 +1645,7 @@ export class SearchManager {
             const icon = ModeManager.getInstance().getTypeIcon(obs.type);
 
             const time = formatTime(item.epoch);
-            const title = obs.title || 'Untitled';
+            const title = formatObservationTitle(obs.title, obs.git_user);
             const tokens = estimateTokens(obs.narrative);
 
             const showTime = time !== lastTime;

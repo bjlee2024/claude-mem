@@ -59,8 +59,8 @@ function initializeDatabase(): SessionStore | null {
   }
 }
 
-function renderEmptyState(project: string, forHuman: boolean): string {
-  return forHuman ? renderHumanEmptyState(project) : renderAgentEmptyState(project);
+function renderEmptyState(project: string, forHuman: boolean, gitUserFilter: string | null): string {
+  return forHuman ? renderHumanEmptyState(project, gitUserFilter) : renderAgentEmptyState(project, gitUserFilter);
 }
 
 function buildContextOutput(
@@ -70,13 +70,22 @@ function buildContextOutput(
   config: ContextConfig,
   cwd: string,
   sessionId: string | undefined,
-  forHuman: boolean
+  forHuman: boolean,
+  // The filter actually applied to the observations being rendered — NOT
+  // necessarily config.gitUserFilter. The worker path (generateContext)
+  // filters in SQL, so its config.gitUserFilter reflects reality. The
+  // client/server-beta path (renderContextFromObservations) fetches rows
+  // over the network with no author filter, so it must pass null here even
+  // if CLAUDE_MEM_CONTEXT_GIT_USER is set locally — otherwise the header
+  // would claim a filter that never ran. Callers decide; the renderer never
+  // guesses from config.
+  appliedGitUserFilter: string | null
 ): string {
   const output: string[] = [];
 
   const economics = calculateTokenEconomics(observations);
 
-  output.push(...renderHeader(project, economics, config, forHuman));
+  output.push(...renderHeader(project, economics, config, forHuman, appliedGitUserFilter));
 
   const displaySummaries = summaries.slice(0, config.sessionCount);
   const summariesForTimeline = prepareSummariesForTimeline(displaySummaries, summaries);
@@ -128,6 +137,10 @@ export function renderContextFromObservations(
   } catch {
     ModeManager.getInstance().loadMode(loadFromFileOnce().CLAUDE_MEM_MODE || 'code');
   }
+  // appliedGitUserFilter is hard-coded null: this path fetches observations
+  // remotely via client.contextObservations(...), which applies no author
+  // filter server-side. Passing loadContextConfig().gitUserFilter here would
+  // make the header claim filtering that never happened.
   return buildContextOutput(
     project,
     observations,
@@ -136,6 +149,7 @@ export function renderContextFromObservations(
     cwd,
     sessionId,
     forHuman,
+    null,
   );
 }
 
@@ -143,17 +157,11 @@ export async function generateContext(
   input?: ContextInput,
   forHuman: boolean = false
 ): Promise<string> {
-  const config = loadContextConfig();
   const cwd = input?.cwd ?? process.cwd();
   const context = getProjectContext(cwd);
 
   const projects = input?.projects?.length ? input.projects : context.allProjects;
   const project = projects[projects.length - 1] ?? context.primary;
-
-  if (input?.full) {
-    config.totalObservationCount = 999999;
-    config.sessionCount = 999999;
-  }
 
   const db = initializeDatabase();
   if (!db) {
@@ -161,6 +169,18 @@ export async function generateContext(
   }
 
   try {
+    // "me" is resolved from the most recently started session's own stored
+    // git_user rather than shelling out to git from the daemon: this process
+    // serves HTTP requests with no access to the caller's real cwd, so
+    // getGitUser(process.cwd()) here would read whatever directory happened
+    // to launch the daemon, not the user's repo (see ContextConfigLoader.ts).
+    const config = loadContextConfig(() => db.getMostRecentGitUserForProject(project));
+
+    if (input?.full) {
+      config.totalObservationCount = 999999;
+      config.sessionCount = 999999;
+    }
+
     const observations = projects.length > 1
       ? queryObservationsMulti(db, projects, config)
       : queryObservations(db, project, config);
@@ -169,9 +189,11 @@ export async function generateContext(
       : querySummaries(db, project, config);
 
     if (observations.length === 0 && summaries.length === 0) {
-      return renderEmptyState(project, forHuman);
+      return renderEmptyState(project, forHuman, config.gitUserFilter);
     }
 
+    // This path filtered in SQL (see ObservationCompiler), so config.gitUserFilter
+    // reflects what was actually applied — safe to pass straight through.
     const output = buildContextOutput(
       project,
       observations,
@@ -179,7 +201,8 @@ export async function generateContext(
       config,
       cwd,
       input?.session_id,
-      forHuman
+      forHuman,
+      config.gitUserFilter
     );
 
     return output;

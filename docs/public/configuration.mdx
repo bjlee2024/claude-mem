@@ -271,6 +271,43 @@ Control which observation types and concepts are included:
 
 Use "All" or "None" buttons to quickly select/deselect all options.
 
+**작성자 필터** (`CLAUDE_MEM_CONTEXT_GIT_USER`, 기본값 `all`):
+
+주입할 Observation을 기록한 사람(git author) 기준으로 필터링한다.
+
+| 값 | 동작 |
+|----|------|
+| `all` (기본) | 필터 없음 — 모든 작성자의 Observation을 주입 |
+| `me` | 이 프로젝트에서 가장 최근에 작성자가 기록된 세션의 작성자와 일치하는 Observation만 주입 |
+| 특정 이름 (예: `alice`) | 해당 이름이 정확히 일치하는 작성자의 Observation만 주입 |
+
+**주의 — 과거 기록 실종**: 이 기능이 추가되기 전에 기록된 Observation은 작성자 정보(`git_user`)가
+비어 있다(`NULL`). `me`나 특정 이름으로 필터를 걸면 이런 과거 Observation은 전부 제외된다.
+즉, 필터를 켜는 순간 기존 히스토리가 갑자기 사라진 것처럼 보일 수 있다 — 실제로는 삭제된 것이
+아니라 작성자 미상이라 필터에 걸러진 것이다.
+
+**`me`가 해석되는 방식**: 컨텍스트 주입은 워커 데몬 안에서 일어나며, 데몬은 사용자의 작업
+디렉터리를 알지 못한다. 그래서 `me`는 그 자리에서 `git config`를 실행하는 대신, 해당 프로젝트에
+작성자가 기록된 **가장 최근 세션의 작성자**로 해석한다. 이 값은 이미 DB에 저장된 이름이므로
+어떤 Observation과도 일치하지 않는 이름이 나올 수 없다.
+
+여기에는 한 가지 시차가 따른다. 컨텍스트 주입은 `SessionStart`에, 세션 기록은
+`UserPromptSubmit`에 일어나므로 주입 시점에는 현재 세션 행이 아직 없다. 따라서 `me`는 항상 직전
+세션까지의 정보로 해석된다. `git config user.name`을 바꾼 직후 첫 세션은 이전 이름으로 필터링되고,
+그다음 세션부터 새 이름이 반영된다.
+
+작성자가 기록된 세션이 하나도 없으면 컨텍스트가 통째로 비는 것을 막기 위해 전원(필터 없음)으로
+자동 폴백한다.
+
+여러 사람이 하나의 워커를 공유하도록 `CLAUDE_MEM_WORKER_HOST`를 기본값(`127.0.0.1`) 밖으로
+설정한 경우, `me`는 마지막으로 세션을 시작한 사람으로 해석되어 정작 본인의 작업이 걸러질 수 있다.
+이런 구성에서는 `me` 대신 이름을 직접 지정하는 편이 안전하다.
+
+**런타임별 적용 범위**: 로컬 워커(sqlite) 런타임에서는 이 필터가 SQL 조회 단계에서 실제로
+적용된다. 반면 client/server-beta(postgres) 런타임에서는 관측을 네트워크로 그대로 받아오는
+구조라 이 필터가 적용되지 않는다 — `CLAUDE_MEM_CONTEXT_GIT_USER`를 설정해도 server-beta 클라이언트
+세션에서는 작성자 구분 없이 전체가 주입된다.
+
 ### Display Settings
 
 Control how observations appear in the context:
@@ -312,6 +349,7 @@ Settings are stored in `~/.claude-mem/settings.json`:
   "CLAUDE_MEM_CONTEXT_SESSION_COUNT": "20",
   "CLAUDE_MEM_CONTEXT_OBSERVATION_TYPES": "bugfix,decision,discovery",
   "CLAUDE_MEM_CONTEXT_OBSERVATION_CONCEPTS": "how-it-works,gotcha",
+  "CLAUDE_MEM_CONTEXT_GIT_USER": "all",
   "CLAUDE_MEM_CONTEXT_FULL_COUNT": "10",
   "CLAUDE_MEM_CONTEXT_FULL_FIELD": "narrative",
   "CLAUDE_MEM_CONTEXT_SHOW_READ_TOKENS": "true",

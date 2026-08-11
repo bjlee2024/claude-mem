@@ -35,8 +35,8 @@ export function storeObservation(
   const stmt = db.prepare(`
     INSERT INTO observations
     (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-     files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(memory_session_id, content_hash) DO NOTHING
     RETURNING id, created_at_epoch
   `);
@@ -56,6 +56,7 @@ export function storeObservation(
     discoveryTokens,
     observation.agent_type ?? null,
     observation.agent_id ?? null,
+    observation.git_user ?? null,
     contentHash,
     timestampIso,
     timestampEpoch

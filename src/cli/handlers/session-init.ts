@@ -14,6 +14,7 @@ import { isInternalProtocolPayload } from '../../utils/tag-stripping.js';
 import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
+import { getGitUser } from '../../utils/git-user.js';
 
 interface SessionInitResponse {
   sessionDbId: number;
@@ -53,6 +54,7 @@ export const sessionInitHandler: EventHandler = {
     const prompt = (!rawPrompt || !rawPrompt.trim()) ? '[media prompt]' : rawPrompt;
 
     const project = getProjectContext(cwd).primary;
+    const gitUser = getGitUser(cwd);
     const platformSource = normalizePlatformSource(input.platform);
 
     const runtime = resolveRuntimeContext();
@@ -68,7 +70,7 @@ export const sessionInitHandler: EventHandler = {
           agentId: input.agentId ?? null,
           agentType: input.agentType ?? null,
           platformSource,
-          metadata: { project, prompt },
+          metadata: { project, prompt, gitUser },
         });
       } catch (error) {
         logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
@@ -86,7 +88,7 @@ export const sessionInitHandler: EventHandler = {
           agentId: input.agentId ?? null,
           agentType: input.agentType ?? null,
           platformSource,
-          metadata: { project, prompt },
+          metadata: { project, prompt, gitUser },
         });
         logger.info('HOOK', 'session-init: server-beta session started', {
           contentSessionId: sessionId,
@@ -123,6 +125,7 @@ export const sessionInitHandler: EventHandler = {
         project,
         prompt,
         platformSource,
+        gitUser,
       },
     );
 

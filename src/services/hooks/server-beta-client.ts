@@ -158,6 +158,9 @@ export interface ServerBetaSearchObservationsRequest {
   projectId: string;
   query: string;
   limit?: number;
+  // Optional author filter — restricts results to observations captured
+  // under this git config user.name (Task 10/11).
+  gitUser?: string;
 }
 
 export interface ServerBetaSearchObservationsResponse {
@@ -387,12 +390,13 @@ export class ServerBetaClient {
   }
 
   buildSearchPayload(
-    input: { projectId: string; query: string; limit?: number },
+    input: { projectId: string; query: string; limit?: number; gitUser?: string },
   ): Record<string, unknown> {
     return {
       projectId: input.projectId,
       query: input.query,
       ...(input.limit !== undefined ? { limit: input.limit } : {}),
+      ...(input.gitUser !== undefined ? { gitUser: input.gitUser } : {}),
     };
   }
 

@@ -361,6 +361,7 @@ interface ObservationSearchArgs {
   projectId?: string;
   query: string;
   limit?: number;
+  gitUser?: string;
 }
 
 async function handleObservationSearch(
@@ -376,6 +377,7 @@ async function handleObservationSearch(
       projectId,
       query: args.query,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
     };
     const response = await ctx.client.searchObservations(request);
     return formatJsonResult(response);
@@ -512,7 +514,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
   },
   {
     name: 'search',
-    description: 'Step 1: Search memory. Returns index with IDs. Params: query, limit, project, platformSource, type, obs_type, dateStart, dateEnd, offset, orderBy',
+    description: 'Step 1: Search memory. Returns index with IDs. Params: query, limit, project, platformSource, gitUser, type, obs_type, dateStart, dateEnd, offset, orderBy',
     inputSchema: {
       type: 'object',
       properties: {
@@ -520,6 +522,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
         limit: { type: 'number', description: 'Max results (default 20)' },
         project: { type: 'string', description: 'Filter by project name' },
         platformSource: { type: 'string', description: "Filter by platform source (e.g. claude, codex, cursor) — restricts results to that agent's own memory" },
+        gitUser: { type: 'string', description: "Filter by git author (git config user.name) — restricts results to that person's observations" },
         type: { type: 'string', description: 'Filter by observation type' },
         obs_type: { type: 'string', description: 'Filter by obs_type field' },
         dateStart: { type: 'string', description: 'Start date filter (ISO)' },
@@ -544,7 +547,12 @@ NEVER fetch full details without filtering first. 10x token savings.`,
             projectId = await effectiveProjectId(ctx, undefined);
           }
           const limit = typeof args.limit === 'number' ? args.limit : undefined;
-          const response = await ctx.client.searchObservations({ projectId, query: args.query, ...(limit !== undefined ? { limit } : {}) });
+          const response = await ctx.client.searchObservations({
+            projectId,
+            query: args.query,
+            ...(limit !== undefined ? { limit } : {}),
+            ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
+          });
           return formatJsonResult(response);
         } catch (error) {
           return formatToolError(error);
@@ -647,13 +655,14 @@ NEVER fetch full details without filtering first. 10x token savings.`,
   },
   {
     name: 'observation_search',
-    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (required), projectId (optional), limit (default 20, max 100).',
+    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (required), projectId (optional), limit (default 20, max 100), gitUser (optional, filter by git author).',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'string' },
         query: { type: 'string', description: 'Search query (required)' },
         limit: { type: 'number', description: 'Max results (default 20, max 100)' },
+        gitUser: { type: 'string', minLength: 1, description: 'Filter by git author (git config user.name)' },
       },
       required: ['query'],
       additionalProperties: false,

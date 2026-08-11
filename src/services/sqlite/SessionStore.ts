@@ -69,6 +69,29 @@ export class SessionStore {
     this.dropDeadPendingMessagesColumns();
     this.ensurePendingMessagesToolUseIdColumn();
     this.dropWorkerPidColumn();
+    this.addGitUserColumns();
+  }
+
+  private addGitUserColumns(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(35) as SchemaVersion | undefined;
+
+    const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
+    if (!obsCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE observations ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to observations table');
+    }
+
+    const sessionCols = this.db.query('PRAGMA table_info(sdk_sessions)').all() as TableColumnInfo[];
+    if (!sessionCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE sdk_sessions ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to sdk_sessions table');
+    }
+
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
+
+    if (!applied) {
+      this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(35, new Date().toISOString());
+    }
   }
 
   private dropWorkerPidColumn(): void {
@@ -1419,14 +1442,34 @@ export class SessionStore {
     }>;
   }
 
+  // Used to resolve CLAUDE_MEM_CONTEXT_GIT_USER=me in the worker daemon, which
+  // has no access to the user's real working directory (it serves requests
+  // that never carry the caller's cwd). The most recently started session for
+  // this project was captured at the hook's real cwd (session-init.ts), so its
+  // git_user is the same identity capture would have stamped onto a new
+  // observation right now — unlike shelling out to git from the daemon's own
+  // (arbitrary) cwd.
+  getMostRecentGitUserForProject(project: string): string | null {
+    const stmt = this.db.prepare(`
+      SELECT git_user FROM sdk_sessions
+      WHERE project = ? AND git_user IS NOT NULL
+      ORDER BY started_at_epoch DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(project) as { git_user: string | null } | undefined;
+    return row?.git_user ?? null;
+  }
+
   getObservationsForSession(memorySessionId: string): Array<{
     title: string;
     subtitle: string;
     type: string;
     prompt_number: number | null;
+    git_user: string | null;
   }> {
     const stmt = this.db.prepare(`
-      SELECT title, subtitle, type, prompt_number
+      SELECT title, subtitle, type, prompt_number, git_user
       FROM observations
       WHERE memory_session_id = ?
       ORDER BY created_at_epoch ASC
@@ -1437,6 +1480,7 @@ export class SessionStore {
       subtitle: string;
       type: string;
       prompt_number: number | null;
+      git_user: string | null;
     }>;
   }
 
@@ -1452,11 +1496,11 @@ export class SessionStore {
 
   getObservationsByIds(
     ids: number[],
-    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; type?: string | string[]; concepts?: string | string[]; files?: string | string[] } = {}
+    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; type?: string | string[]; concepts?: string | string[]; files?: string | string[]; gitUser?: string; platformSource?: string } = {}
   ): ObservationSearchResult[] {
     if (ids.length === 0) return [];
 
-    const { orderBy = 'date_desc', limit, project, type, concepts, files } = options;
+    const { orderBy = 'date_desc', limit, project, type, concepts, files, gitUser, platformSource } = options;
     const preserveIdOrder = orderBy === 'relevance';
     const orderClause = preserveIdOrder ? '' : `ORDER BY created_at_epoch ${orderBy === 'date_asc' ? 'ASC' : 'DESC'}`;
     const limitClause = limit ? `LIMIT ${limit}` : '';
@@ -1468,6 +1512,24 @@ export class SessionStore {
     if (project) {
       additionalConditions.push('project = ?');
       params.push(project);
+    }
+
+    // Author/source scoping: mirrors SessionSearch.buildFilterClause. Resolved
+    // via a memory_session_id-keyed sdk_sessions subquery rather than reading
+    // observations.git_user/platform_source directly, so this stays the same
+    // source of truth as every other filtered query path in the codebase.
+    if (gitUser) {
+      additionalConditions.push(
+        '(SELECT s.git_user FROM sdk_sessions s WHERE s.memory_session_id = observations.memory_session_id) = ?'
+      );
+      params.push(gitUser);
+    }
+
+    if (platformSource) {
+      additionalConditions.push(
+        `COALESCE((SELECT s.platform_source FROM sdk_sessions s WHERE s.memory_session_id = observations.memory_session_id), '${DEFAULT_PLATFORM_SOURCE}') = ?`
+      );
+      params.push(platformSource);
     }
 
     if (type) {
@@ -1598,11 +1660,12 @@ export class SessionStore {
     user_prompt: string;
     custom_title: string | null;
     status: string;
+    git_user: string | null;
   } | null {
     const stmt = this.db.prepare(`
       SELECT id, content_session_id, memory_session_id, project,
              COALESCE(platform_source, '${DEFAULT_PLATFORM_SOURCE}') as platform_source,
-             user_prompt, custom_title, status
+             user_prompt, custom_title, status, git_user
       FROM sdk_sessions
       WHERE id = ?
       LIMIT 1
@@ -1617,6 +1680,7 @@ export class SessionStore {
       user_prompt: string;
       custom_title: string | null;
       status: string;
+      git_user: string | null;
     } | null) || null;
   }
 
@@ -1662,7 +1726,8 @@ export class SessionStore {
     project: string,
     userPrompt: string,
     customTitle?: string,
-    platformSource?: string
+    platformSource?: string,
+    gitUser?: string | null
   ): number {
     const now = new Date();
     const nowEpoch = now.getTime();
@@ -1709,9 +1774,9 @@ export class SessionStore {
 
     this.db.prepare(`
       INSERT INTO sdk_sessions
-      (content_session_id, memory_session_id, project, platform_source, user_prompt, custom_title, started_at, started_at_epoch, status)
-      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(contentSessionId, project, normalizedPlatformSource, userPrompt, resolved.customTitle || null, now.toISOString(), nowEpoch);
+      (content_session_id, memory_session_id, project, platform_source, user_prompt, custom_title, git_user, started_at, started_at_epoch, status)
+      VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'active')
+    `).run(contentSessionId, project, normalizedPlatformSource, userPrompt, resolved.customTitle || null, gitUser ?? null, now.toISOString(), nowEpoch);
 
     const row = this.db.prepare('SELECT id FROM sdk_sessions WHERE content_session_id = ?')
       .get(contentSessionId) as { id: number };
@@ -1758,6 +1823,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
       metadata?: string | null;
     },
     promptNumber?: number,
@@ -1773,9 +1839,9 @@ export class SessionStore {
     const stmt = this.db.prepare(`
       INSERT INTO observations
       (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-       files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+       files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
        generated_by_model, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(memory_session_id, content_hash) DO NOTHING
       RETURNING id, created_at_epoch
     `);
@@ -1795,6 +1861,7 @@ export class SessionStore {
       discoveryTokens,
       observation.agent_type ?? null,
       observation.agent_id ?? null,
+      observation.git_user ?? null,
       contentHash,
       timestampIso,
       timestampEpoch,
@@ -1878,6 +1945,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
     }>,
     summary: {
       request: string;
@@ -1901,9 +1969,9 @@ export class SessionStore {
       const obsStmt = this.db.prepare(`
         INSERT INTO observations
         (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
          generated_by_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(memory_session_id, content_hash) DO NOTHING
         RETURNING id
       `);
@@ -1928,6 +1996,7 @@ export class SessionStore {
           discoveryTokens,
           observation.agent_type ?? null,
           observation.agent_id ?? null,
+          observation.git_user ?? null,
           contentHash,
           timestampIso,
           timestampEpoch,
@@ -1994,6 +2063,7 @@ export class SessionStore {
       files_modified: string[];
       agent_type?: string | null;
       agent_id?: string | null;
+      git_user?: string | null;
     }>,
     summary: {
       request: string;
@@ -2019,9 +2089,9 @@ export class SessionStore {
       const obsStmt = this.db.prepare(`
         INSERT INTO observations
         (memory_session_id, project, type, title, subtitle, facts, narrative, concepts,
-         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, content_hash, created_at, created_at_epoch,
+         files_read, files_modified, prompt_number, discovery_tokens, agent_type, agent_id, git_user, content_hash, created_at, created_at_epoch,
          generated_by_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(memory_session_id, content_hash) DO NOTHING
         RETURNING id
       `);
@@ -2046,6 +2116,7 @@ export class SessionStore {
           discoveryTokens,
           observation.agent_type ?? null,
           observation.agent_id ?? null,
+          observation.git_user ?? null,
           contentHash,
           timestampIso,
           timestampEpoch,
@@ -2110,21 +2181,43 @@ export class SessionStore {
 
   getSessionSummariesByIds(
     ids: number[],
-    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string } = {}
+    options: { orderBy?: 'date_desc' | 'date_asc' | 'relevance'; limit?: number; project?: string; gitUser?: string; platformSource?: string } = {}
   ): SessionSummarySearchResult[] {
     if (ids.length === 0) return [];
 
-    const { orderBy = 'date_desc', limit, project } = options;
+    const { orderBy = 'date_desc', limit, project, gitUser, platformSource } = options;
     const preserveIdOrder = orderBy === 'relevance';
     const orderClause = preserveIdOrder ? '' : `ORDER BY created_at_epoch ${orderBy === 'date_asc' ? 'ASC' : 'DESC'}`;
     const limitClause = limit ? `LIMIT ${limit}` : '';
     const placeholders = ids.map(() => '?').join(',');
     const params: any[] = [...ids];
+    const additionalConditions: string[] = [];
 
-    const whereClause = project
-      ? `WHERE id IN (${placeholders}) AND project = ?`
+    if (project) {
+      additionalConditions.push('project = ?');
+      params.push(project);
+    }
+
+    // Author/source scoping: session_summaries has no git_user/platform_source
+    // column of its own, so resolve via the same memory_session_id-keyed
+    // sdk_sessions subquery SessionSearch.buildFilterClause uses.
+    if (gitUser) {
+      additionalConditions.push(
+        '(SELECT s.git_user FROM sdk_sessions s WHERE s.memory_session_id = session_summaries.memory_session_id) = ?'
+      );
+      params.push(gitUser);
+    }
+
+    if (platformSource) {
+      additionalConditions.push(
+        `COALESCE((SELECT s.platform_source FROM sdk_sessions s WHERE s.memory_session_id = session_summaries.memory_session_id), '${DEFAULT_PLATFORM_SOURCE}') = ?`
+      );
+      params.push(platformSource);
+    }
+
+    const whereClause = additionalConditions.length > 0
+      ? `WHERE id IN (${placeholders}) AND ${additionalConditions.join(' AND ')}`
       : `WHERE id IN (${placeholders})`;
-    if (project) params.push(project);
 
     const stmt = this.db.prepare(`
       SELECT * FROM session_summaries

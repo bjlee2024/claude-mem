@@ -14,11 +14,23 @@ import {
   type PostgresObservationGenerationJob,
 } from '../../storage/postgres/generation-jobs.js';
 import { PostgresAuthRepository } from '../../storage/postgres/auth.js';
+import { PostgresServerSessionsRepository } from '../../storage/postgres/server-sessions.js';
 import {
   withPostgresTransaction,
   type PostgresPool,
 } from '../../storage/postgres/pool.js';
 import { stripTags } from '../../utils/tag-stripping.js';
+
+/**
+ * Safely pull gitUser out of server_sessions.metadata. This metadata is
+ * whatever the client hook sent, so its shape cannot be trusted.
+ */
+export function resolveSessionGitUser(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const value = (metadata as Record<string, unknown>).gitUser;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  return value;
+}
 
 // processGeneratedResponse owns the full "we got XML from a provider →
 // persist + link + advance outbox" pipeline. Every side-effect runs inside
@@ -111,6 +123,19 @@ export async function processGeneratedResponse(
       };
     }
 
+    // Look up the session's git author once, before the loop — doing this
+    // per-observation would issue one query per persisted observation.
+    const sessionsRepo = new PostgresServerSessionsRepository(client);
+    const sessionGitUser = fresh.serverSessionId
+      ? resolveSessionGitUser(
+          (await sessionsRepo.getByIdForScope({
+            id: fresh.serverSessionId,
+            projectId: fresh.projectId,
+            teamId: fresh.teamId,
+          }))?.metadata
+        )
+      : null;
+
     const persisted: PostgresObservation[] = [];
     for (let index = 0; index < observationsToWrite.length; index++) {
       const parsedObservation = observationsToWrite[index]!;
@@ -149,6 +174,7 @@ export async function processGeneratedResponse(
           files_modified: parsedObservation.files_modified,
           provider: input.providerLabel,
           model: input.modelId ?? null,
+          gitUser: sessionGitUser,
         },
         createdByJobId: fresh.id,
         // Attribute the job's total token cost to the first persisted

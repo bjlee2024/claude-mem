@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Observation } from '../types';
 import { formatDate } from '../utils/formatters';
+import { formatObservationTitle } from '../../../shared/format-observation-title.js';
 
 interface ObservationCardProps {
   observation: Observation;
@@ -92,7 +93,7 @@ export function ObservationCard({ observation }: ObservationCardProps) {
       </div>
 
       {/* Title */}
-      <div className="card-title">{observation.title || 'Untitled'}</div>
+      <div className="card-title">{formatObservationTitle(observation.title, observation.git_user)}</div>
 
       {/* Content based on toggle state */}
       <div className="view-mode-content">

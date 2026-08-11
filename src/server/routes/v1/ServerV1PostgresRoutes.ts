@@ -943,6 +943,8 @@ export class ServerV1PostgresRoutes implements RouteHandler {
         projectId: z.string().min(1),
         query: z.string().min(1),
         limit: z.number().int().positive().max(100).optional(),
+        // Optional author filter — see PostgresObservationRepository#search.
+        gitUser: z.string().min(1).optional(),
       }),
       async (req, res, body) => {
         const teamId = this.requireTeamId(req, res);
@@ -955,6 +957,7 @@ export class ServerV1PostgresRoutes implements RouteHandler {
             teamId,
             query: body.query,
             limit: body.limit ?? 20,
+            gitUser: body.gitUser,
           });
           await this.auditRead(req, 'observation.read', null, body.projectId, {
             mode: 'search',

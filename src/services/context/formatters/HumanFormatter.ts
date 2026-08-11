@@ -8,6 +8,7 @@ import type {
 import { colors } from '../types.js';
 import { ModeManager } from '../../domain/ModeManager.js';
 import { formatObservationTokenDisplay } from '../TokenCalculator.js';
+import { formatObservationTitle } from '../../../shared/format-observation-title.js';
 
 function formatHeaderDateTime(): string {
   const now = new Date();
@@ -21,10 +22,13 @@ function formatHeaderDateTime(): string {
   return `${date} ${time} ${tz}`;
 }
 
-export function renderHumanHeader(project: string): string[] {
+export function renderHumanHeader(project: string, gitUserFilter: string | null = null): string[] {
+  // When a filter is active, say so — otherwise "no history shown" and
+  // "everything was filtered out" look identical to the user.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
   return [
     '',
-    `${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${colors.reset}`,
+    `${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${filterNote}${colors.reset}`,
     `${colors.gray}${'─'.repeat(60)}${colors.reset}`,
     ''
   ];
@@ -106,7 +110,7 @@ export function renderHumanTableRow(
   showTime: boolean,
   config: ContextConfig
 ): string {
-  const title = obs.title || 'Untitled';
+  const title = formatObservationTitle(obs.title, obs.git_user);
   const icon = ModeManager.getInstance().getTypeIcon(obs.type);
   const { readTokens, discoveryTokens, workEmoji } = formatObservationTokenDisplay(obs, config);
 
@@ -125,7 +129,7 @@ export function renderHumanFullObservation(
   config: ContextConfig
 ): string[] {
   const output: string[] = [];
-  const title = obs.title || 'Untitled';
+  const title = formatObservationTitle(obs.title, obs.git_user);
   const icon = ModeManager.getInstance().getTypeIcon(obs.type);
   const { readTokens, discoveryTokens, workEmoji } = formatObservationTokenDisplay(obs, config);
 
@@ -183,6 +187,13 @@ export function renderHumanFooter(totalDiscoveryTokens: number, totalReadTokens:
   ];
 }
 
-export function renderHumanEmptyState(project: string): string {
-  return `\n${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${colors.reset}\n${colors.gray}${'─'.repeat(60)}${colors.reset}\n\n${colors.dim}No previous sessions found for this project yet.${colors.reset}\n`;
+export function renderHumanEmptyState(project: string, gitUserFilter: string | null = null): string {
+  // Same reasoning as renderHumanHeader: without this note, "no history yet"
+  // and "the git-user filter hid everything" render identically, which
+  // defeats the point of having the filter be visible at all.
+  const filterNote = gitUserFilter ? ` · filtered to ${gitUserFilter}` : '';
+  const message = gitUserFilter
+    ? `No observations from "${gitUserFilter}" found for this project yet — other authors may have history here.`
+    : 'No previous sessions found for this project yet.';
+  return `\n${colors.bright}${colors.cyan}[${project}] recent context, ${formatHeaderDateTime()}${filterNote}${colors.reset}\n${colors.gray}${'─'.repeat(60)}${colors.reset}\n\n${colors.dim}${message}${colors.reset}\n`;
 }

@@ -31,6 +31,7 @@ export class MigrationRunner {
     this.addSessionPlatformSourceColumn();
     this.ensureMergedIntoProjectColumns();
     this.addObservationSubagentColumns();
+    this.addGitUserColumns();
     this.rebuildPendingMessagesForSelfHealingClaim();
     this.addObservationsUniqueContentHashIndex();
     this.addObservationsMetadataColumn();
@@ -807,6 +808,29 @@ export class MigrationRunner {
     if (!applied) {
       this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(27, new Date().toISOString());
     }
+  }
+
+  // Adds git_user (TEXT, nullable) to observations and sdk_sessions, recording the
+  // git author (git config user.name) at capture time. No backfill for existing rows.
+  private addGitUserColumns(): void {
+    const applied = this.db.prepare('SELECT version FROM schema_versions WHERE version = ?').get(35) as SchemaVersion | undefined;
+    if (applied) return;
+
+    const obsCols = this.db.query('PRAGMA table_info(observations)').all() as TableColumnInfo[];
+    if (!obsCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE observations ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to observations table');
+    }
+
+    const sessionCols = this.db.query('PRAGMA table_info(sdk_sessions)').all() as TableColumnInfo[];
+    if (sessionCols.length > 0 && !sessionCols.some(c => c.name === 'git_user')) {
+      this.db.run('ALTER TABLE sdk_sessions ADD COLUMN git_user TEXT');
+      logger.debug('DB', 'Added git_user column to sdk_sessions table');
+    }
+
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_observations_git_user ON observations(git_user)');
+
+    this.db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, ?)').run(35, new Date().toISOString());
   }
 
   private rebuildPendingMessagesForSelfHealingClaim(): void {

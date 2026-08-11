@@ -173,6 +173,17 @@ export class SessionSearch {
       params.push(filters.platformSource);
     }
 
+    // Author scoping: buildFilterClause is shared by observations and
+    // session_summaries, but session_summaries has no git_user column. For
+    // the same reason as platformSource above, use a memory_session_id-keyed
+    // session subquery instead of a direct column comparison.
+    if (filters.gitUser) {
+      conditions.push(
+        `(SELECT s3.git_user FROM sdk_sessions s3 WHERE s3.memory_session_id = ${tableAlias}.memory_session_id) = ?`
+      );
+      params.push(filters.gitUser);
+    }
+
     if (filters.type) {
       if (Array.isArray(filters.type)) {
         const placeholders = filters.type.map(() => '?').join(',');
