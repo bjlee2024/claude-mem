@@ -229,21 +229,22 @@ git commit -m "feat(server-beta): allow observation search without a query term"
 
 현재 스키마는 `app.post('/v1/search', …)` 호출 안에 인라인으로 선언되어 있어 테스트에서 참조할 수 없다. **테스트 파일에 스키마를 복제해 검증하면 실제 라우트가 아니라 복제본을 검증하게 되므로 아무것도 보장하지 못한다.** 파일 상단(다른 모듈 상수들이 선언된 위치)으로 옮기고 export한다.
 
+**이 단계에서는 동작을 바꾸지 않는다.** `query`는 아직 필수인 채로 옮기기만 한다 — 그래야 다음 단계의 테스트가 실제로 실패하면서 자신이 실제 라우트를 붙잡고 있음을 증명한다.
+
 `src/server/routes/v1/ServerV1PostgresRoutes.ts`:
 
 ```typescript
 // Exported so tests can assert the contract directly instead of duplicating it.
 export const SearchObservationsSchema = z.object({
   projectId: z.string().min(1),
-  // Optional: with no query the search returns the most recent observations
-  // instead of full-text matches. Empty string stays invalid so a caller
-  // cannot accidentally send one.
-  query: z.string().min(1).optional(),
+  query: z.string().min(1),
   limit: z.number().int().positive().max(100).optional(),
   // Optional author filter — see PostgresObservationRepository#search.
   gitUser: z.string().min(1).optional(),
 });
 ```
+
+그리고 `app.post('/v1/search', readAuth, this.handleCreate(` 뒤의 인라인 zod 객체를 `SearchObservationsSchema`로 교체한다. 이 시점에서 `bun test tests/server/` 를 돌려 기존 동작이 유지되는지 확인한다.
 
 - [ ] **Step 2: 실패하는 스키마 테스트 추가**
 
@@ -276,14 +277,15 @@ describe('/v1/search 요청 스키마', () => {
 Run: `bun test tests/server/search-without-query.test.ts`
 Expected: FAIL — `query 없이…` 두 케이스가 실패한다. 아직 라우트가 `query`를 필수로 두고 있기 때문이다. 이것이 이 테스트가 실제 코드를 붙잡고 있다는 증거다.
 
-- [ ] **Step 4: 라우트가 추출한 스키마를 쓰도록 교체**
+- [ ] **Step 4: 스키마의 `query`를 optional로 바꾼다**
 
-`app.post('/v1/search', readAuth, this.handleCreate(` 뒤의 인라인 zod 객체를 `SearchObservationsSchema`로 바꾼다.
+Step 1에서 추출한 `SearchObservationsSchema`의 `query` 한 줄만 고친다. 이것이 테스트를 통과시키는 최소 변경이다.
 
 ```typescript
-    app.post('/v1/search', readAuth, this.handleCreate(
-      SearchObservationsSchema,
-      async (req, res, body) => {
+  // Optional: with no query the search returns the most recent observations
+  // instead of full-text matches. Empty string stays invalid so a caller
+  // cannot accidentally send one.
+  query: z.string().min(1).optional(),
 ```
 
 핸들러의 `repo.search` 호출에서 `query: body.query`는 그대로 둔다 — 이제 `string | undefined`이고 Task 1의 시그니처가 이를 받는다.
