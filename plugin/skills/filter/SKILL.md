@@ -16,7 +16,25 @@ Show observations from a single git author on the current project.
 
 ## How to run it
 
-**Step 1 — resolve the author.**
+**Step 1 — resolve the project name.**
+
+Every call below needs `project`, or the search has no filter to run on and
+errors out (see Notes). The cheapest source is what's already on screen: the
+context block injected at session start opens with a line like
+`[owner/repo] recent context, ...` — reuse that `owner/repo` string if you can
+see it.
+
+If it's not visible, derive it the same way claude-mem does:
+
+```bash
+git config --get remote.origin.url
+```
+
+Normalize the URL to `owner/repo` (the last two path segments, minus a
+trailing `.git`). If the command fails or there's no `origin` remote, fall
+back to the basename of the current directory.
+
+**Step 2 — resolve the author.**
 
 For `me` (or no argument), get the current git user:
 
@@ -25,33 +43,37 @@ git config user.name
 ```
 
 If that prints nothing or fails, tell the user you could not read their git
-author and show unfiltered results instead. Do not return an empty screen.
+author and fall back to the `off` behavior below — still passing `project`.
+Do not return an empty screen, and do not call `search` with neither `query`
+nor a filter.
 
-For a literal name, use it as given. For `off`, skip the filter entirely.
+For a literal name, use it as given. For `off`, skip the author filter
+entirely; `project` alone is enough to satisfy the filter requirement.
 
-**Step 2 — query.**
+**Step 3 — query.**
 
 Call the `search` tool with no query term, so results come back newest-first:
 
-- with an author: `search({ gitUser: "<resolved name>", limit: 20 })`
-- for `off`: `search({ limit: 20 })`
+- with an author: `search({ gitUser: "<resolved name>", project: "<resolved project>", limit: 20 })`
+- for `off`, or for `me` when git user resolution failed: `search({ project: "<resolved project>", limit: 20 })`
 
 Do not pass a `query`. Passing one turns this into a full-text search and
 changes the ordering.
 
-**Step 3 — present the results.**
+**Step 4 — present the results.**
 
 List them the way `mem-search` does. Titles already carry `by <user>,` so the
 author is visible without extra formatting.
 
 ## When results are empty
 
-Observations recorded before author capture shipped have no author, so they are
-excluded by any author filter. This is expected — say so rather than implying
+Observations recorded before author capture shipped have no author, so any
+author filter excludes them. This is expected — say so rather than implying
 the history is gone:
 
-> `<name>` 작성자로 기록된 관측이 없습니다. 작성자 기록은 최근에 추가된
-> 기능이라 그 이전 관측에는 작성자 정보가 없습니다.
+> No observations found with author `<name>`. Author tracking is a recent
+> addition, so observations recorded before it shipped have no author
+> attached — that history isn't lost, it just doesn't match this filter.
 
 Offer `/claude-mem:filter off` as the way to see everything.
 
@@ -59,6 +81,7 @@ Offer `/claude-mem:filter off` as the way to see everything.
 
 - This command only reads. It does not change any setting, and it does not
   affect what gets injected at the start of the next session.
-- On the client/server-beta runtime this needs a server built after the
-  author-filter change; older servers reject a search with no query term
-  with a 400.
+- `search` requires either a `query` or at least one filter (`project`,
+  `gitUser`, `type`, a date range, `concepts`, `files`, or `platformSource`);
+  a call with none of those is rejected with a 400. This is why every example
+  above always includes `project`.
