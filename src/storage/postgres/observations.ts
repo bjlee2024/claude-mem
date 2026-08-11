@@ -79,6 +79,56 @@ interface ObservationSourceRow {
   created_at: Date;
 }
 
+/**
+ * Builds the observation search query. The two branches are kept fully
+ * separate on purpose: with no search term there is no tsvector predicate and
+ * ts_rank ordering is meaningless, and splicing an optional predicate into one
+ * shared template shifts the $n numbering between branches — which postgres
+ * accepts silently and answers with the wrong rows.
+ */
+export function buildSearchQuery(input: {
+  projectId: string;
+  teamId: string;
+  query?: string | null;
+  limit?: number;
+  gitUser?: string | null;
+}): { sql: string; params: unknown[] } {
+  const limit = input.limit ?? 20;
+
+  if (input.query) {
+    const params: unknown[] = [input.projectId, input.teamId, input.query, limit];
+    const gitUserClause = input.gitUser ? `AND metadata->>'gitUser' = $5` : '';
+    if (input.gitUser) params.push(input.gitUser);
+    return {
+      sql: `
+        SELECT * FROM observations
+        WHERE project_id = $1
+          AND team_id = $2
+          AND content_search @@ websearch_to_tsquery('english', $3)
+          ${gitUserClause}
+        ORDER BY ts_rank(content_search, websearch_to_tsquery('english', $3)) DESC, updated_at DESC
+        LIMIT $4
+      `,
+      params,
+    };
+  }
+
+  const params: unknown[] = [input.projectId, input.teamId, limit];
+  const gitUserClause = input.gitUser ? `AND metadata->>'gitUser' = $4` : '';
+  if (input.gitUser) params.push(input.gitUser);
+  return {
+    sql: `
+      SELECT * FROM observations
+      WHERE project_id = $1
+        AND team_id = $2
+        ${gitUserClause}
+      ORDER BY created_at DESC
+      LIMIT $3
+    `,
+    params,
+  };
+}
+
 export class PostgresObservationRepository {
   constructor(private client: PostgresQueryable) {}
 
@@ -169,7 +219,7 @@ export class PostgresObservationRepository {
   async search(input: {
     projectId: string;
     teamId: string;
-    query: string;
+    query?: string | null;
     limit?: number;
     gitUser?: string | null;
   }): Promise<PostgresObservation[]> {
@@ -177,21 +227,8 @@ export class PostgresObservationRepository {
     // capture (Task 10). No new index — this query is already scoped by
     // project_id, and the WHERE clause only appends the extra predicate when
     // a gitUser is actually requested.
-    const gitUserClause = input.gitUser ? `AND metadata->>'gitUser' = $5` : '';
-    const result = await this.client.query<ObservationRow>(
-      `
-        SELECT * FROM observations
-        WHERE project_id = $1
-          AND team_id = $2
-          AND content_search @@ websearch_to_tsquery('english', $3)
-          ${gitUserClause}
-        ORDER BY ts_rank(content_search, websearch_to_tsquery('english', $3)) DESC, updated_at DESC
-        LIMIT $4
-      `,
-      input.gitUser
-        ? [input.projectId, input.teamId, input.query, input.limit ?? 20, input.gitUser]
-        : [input.projectId, input.teamId, input.query, input.limit ?? 20]
-    );
+    const { sql, params } = buildSearchQuery(input);
+    const result = await this.client.query<ObservationRow>(sql, params);
     return result.rows.map(mapObservationRow);
   }
 
