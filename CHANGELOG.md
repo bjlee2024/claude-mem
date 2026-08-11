@@ -4,6 +4,82 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.8.0] - 2026-08-11
+
+Every Observation now records the git author (`git config user.name`), shows it as `by <user>, <title>` wherever titles appear, and can be filtered by it. On a shared project you can narrow memory to one person's work and pick up from their history.
+
+Both runtimes are covered: the local sqlite worker and server-beta (postgres).
+
+## What you get
+
+- **Attribution on every new Observation.** Captured once per session from the session-start hook — measured at 1.0ms, so it costs nothing on the input path.
+- **`search(gitUser: "alice")`** on the MCP `search` and `observation_search` tools.
+- **`CLAUDE_MEM_CONTEXT_GIT_USER`** (`all` default / `me` / a literal name) to scope the context injected at session start.
+
+## Before you turn the filter on
+
+Observations recorded before this release have **no author**, so `me` or a name filter excludes all of them — it looks like your history vanished. Nothing is deleted; those rows just have no author to match. There is no backfill, because the original author cannot be recovered.
+
+The default is `all`, so doing nothing changes nothing.
+
+## Two behaviors worth knowing
+
+**`me` reflects the previous session.** Context injection runs inside the worker daemon, which cannot see your working directory, so `me` resolves to the project's most recent authored session rather than a live `git config` call. Injection fires on `SessionStart` while the session row is written on `UserPromptSubmit`, so after changing `git config user.name` the first session still filters on the old name and corrects itself after that.
+
+**On the client/server-beta runtime the context filter does not apply.** Observations arrive over the network, so the filter never reaches a SQL stage. Setting it injects everyone; the header deliberately omits the filter note there rather than claiming a filter that isn't running. Author *display* and `search(gitUser:)` do work on that runtime.
+
+## Upgrading
+
+`npm install -g @bjlee2024/claude-mem@13.8.0` (or `npx @bjlee2024/claude-mem@13.8.0`).
+
+sqlite migrates itself on worker start — two nullable columns and an index. **No postgres migration**: the author lives in the existing `metadata` JSONB alongside `title`.
+
+If you run the dockerized server, rebuild it or Observations will keep being written without an author:
+
+```bash
+npm run build
+docker compose -f docker-compose.my.yml build
+docker compose -f docker-compose.my.yml up -d
+```
+
+Observations created before the server is rebuilt have no author, and rebuilding does not backfill them.
+
+## Note on tags
+
+Starting with this release, tags in this fork are prefixed `bjlee-vX.Y.Z`. Upstream already published `v13.8.0` through `v13.14.0`, and those tags are present here through the fork relationship, so the unprefixed namespace was no longer usable. The npm package version is unaffected — it remains `13.8.0` under the `@bjlee2024` scope.
+
+Full detail: [#16](https://github.com/bjlee2024/claude-mem/pull/16).
+
+## [13.7.1] - 2026-07-13
+
+## Fix: Grok hooks disappear after reload
+
+- Install `bin/claude-mem-client.py` under `~/.grok/hooks/`
+- Use relative `command` paths (Grok docs format) instead of quoted absolute python+script pairs
+- `claude-mem grok install` rewrites hooks correctly
+
+npm: `@bjlee2024/claude-mem@13.7.1`
+
+Upgrade:
+```bash
+npx @bjlee2024/claude-mem@13.7.1 install --ide grok
+# or
+claude-mem grok install
+```
+Then `/hooks` → `r` in Grok.
+
+## [13.7.0] - 2026-07-13
+
+## Grok server-beta client write
+
+- Add Grok Build TUI integration: hooks write directly to server-beta (no local worker)
+- `npx @bjlee2024/claude-mem install --ide grok`
+- `claude-mem grok install|status|uninstall`
+- Package `plugin/scripts/grok-client.py` + `GrokHooksInstaller`
+- Docs: https://docs.claude-mem.ai/grok/setup (source in repo)
+
+npm: `@bjlee2024/claude-mem@13.7.0`
+
 ## [13.6.0] - 2026-06-30
 
 ## 인터랙티브 인스톨러 Client 옵션

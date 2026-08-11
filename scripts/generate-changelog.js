@@ -47,8 +47,13 @@ function cleanReleaseBody(body) {
     .trim();
 }
 
+// Tags are `vX.Y.Z` historically and `bjlee-vX.Y.Z` from 13.8.0 onward — this
+// fork moved to a prefixed tag namespace because upstream already published
+// v13.8.0 through v13.14.0, and those tags are present here via the fork.
+// Both forms must reduce to a bare X.Y.Z so CHANGELOG headings stay uniform
+// and the already-published check below keeps matching.
 function extractVersion(tagName) {
-  return tagName.replace(/^v/, '');
+  return tagName.replace(/^(bjlee-)?v/, '');
 }
 
 function renderEntry(release) {
