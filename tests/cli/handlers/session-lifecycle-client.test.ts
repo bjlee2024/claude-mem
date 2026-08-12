@@ -292,6 +292,22 @@ describe('sessionInitHandler — client runtime branch', () => {
     expect(result!.continue).toBe(true);
     expect(workerCallLog.length).toBe(0);
   });
+
+  it('중단된 세션에서도 session-init은 평소대로 동작한다', async () => {
+    const { pauseSession, resumeSession } = await import('../../../src/shared/session-pause.js');
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    pauseSession('session-init-client-1');
+    try {
+      // Same assertions the file's existing happy-path test makes — session-init
+      // must behave identically whether or not recording is paused. This
+      // asymmetry is the whole point of the feature.
+      const result = await sessionInitHandler.execute(initInput());
+      expect(result.continue).toBe(true);
+    } finally {
+      resumeSession('session-init-client-1');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

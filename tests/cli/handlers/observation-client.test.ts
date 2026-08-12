@@ -209,4 +209,28 @@ describe('observationHandler — client runtime branch', () => {
     expect(result.exitCode).toBe(HOOK_EXIT_CODES.SUCCESS);
     expect(workerCallLog.length).toBe(0);
   });
+
+  it('일시 중지된 세션에서는 아무것도 전송하지 않는다', async () => {
+    const { pauseSession, resumeSession } = await import('../../../src/shared/session-pause.js');
+    const { observationHandler } = await import('../../../src/cli/handlers/observation.js');
+
+    const before = recordToolUseCalls.length;
+    pauseSession('session-client-1');
+    try {
+      const result = await observationHandler.execute(clientInput());
+      expect(result.continue).toBe(true);
+      // The point of the test: nothing was sent, not merely that it did not throw.
+      expect(recordToolUseCalls.length).toBe(before);
+    } finally {
+      resumeSession('session-client-1');
+    }
+  });
+
+  it('중단되지 않은 세션은 평소대로 전송한다', async () => {
+    const { observationHandler } = await import('../../../src/cli/handlers/observation.js');
+
+    const before = recordToolUseCalls.length;
+    await observationHandler.execute(clientInput());
+    expect(recordToolUseCalls.length).toBe(before + 1);
+  });
 });

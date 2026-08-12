@@ -136,4 +136,22 @@ describe('summarizeHandler — subagent short-circuit', () => {
     expect(result.exitCode).toBe(0);
     expect(workerCallLog.length).toBe(0);
   });
+
+  it('중단된 세션의 Stop은 요약을 건너뛰고 중단 항목을 지운다', async () => {
+    const { pauseSession, isSessionPaused } = await import('../../../src/shared/session-pause.js');
+    const { summarizeHandler } = await import('../../../src/cli/handlers/summarize.js');
+
+    pauseSession('session-summarize-1');
+    expect(isSessionPaused('session-summarize-1')).toBe(true);
+
+    await summarizeHandler.execute({
+      sessionId: 'session-summarize-1',
+      cwd: '/tmp',
+      platform: 'claude-code',
+      transcriptPath: '/tmp/does-not-matter.jsonl',
+    } as any);
+
+    // Cleared by the handler. Fails if the early return runs before the cleanup.
+    expect(isSessionPaused('session-summarize-1')).toBe(false);
+  });
 });

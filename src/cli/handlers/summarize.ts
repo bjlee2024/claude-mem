@@ -10,6 +10,7 @@ import { stripMemoryTagsFromPrompt } from '../../utils/tag-stripping.js';
 import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
+import { isSessionPaused, resumeSession } from '../../shared/session-pause.js';
 import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
@@ -17,6 +18,15 @@ import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 export const summarizeHandler: EventHandler = {
   async execute(input: NormalizedHookInput): Promise<HookResult> {
     if (input.cwd && !shouldTrackProject(input.cwd)) {
+      return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
+    }
+
+    if (isSessionPaused(input.sessionId)) {
+      // Stop fires at session end, so this is where the pause entry gets cleared.
+      // Clear first, then skip — reversing the order leaves the entry behind
+      // forever, because the early return would run before the cleanup.
+      resumeSession(input.sessionId);
+      logger.debug('HOOK', 'Session paused, skipping summary', { sessionId: input.sessionId });
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }
 

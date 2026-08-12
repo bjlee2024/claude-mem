@@ -7,6 +7,7 @@ import { executeWithWorkerFallback, isWorkerFallback } from '../../shared/worker
 import { logger } from '../../utils/logger.js';
 import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
+import { isSessionPaused } from '../../shared/session-pause.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
 import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
@@ -58,6 +59,11 @@ export const observationHandler: EventHandler = {
 
     if (!shouldTrackProject(cwd)) {
       logger.debug('HOOK', 'Project excluded from tracking, skipping observation', { cwd, toolName });
+      return { continue: true, suppressOutput: true };
+    }
+
+    if (isSessionPaused(sessionId)) {
+      logger.debug('HOOK', 'Session paused, skipping observation', { sessionId, toolName });
       return { continue: true, suppressOutput: true };
     }
 
