@@ -14,26 +14,39 @@ export function runSessionCommand(args: string[]): void {
   if (!sub || !['pause', 'resume', 'status'].includes(sub)) {
     console.error(pc.red(`Unknown session command: ${sub ?? '(none)'}`));
     console.error(USAGE);
+    // Set, not process.exit(): this function must stay callable from tests
+    // without killing the test runner. main() in index.ts exits the process
+    // once the event loop drains, same as every sibling command's usage error.
+    process.exitCode = 1;
     return;
   }
 
   if (!sessionId || !sessionId.trim()) {
     console.error(pc.red('A session id is required.'));
     console.error(USAGE);
+    process.exitCode = 1;
     return;
   }
 
   const id = sessionId.trim();
 
   if (sub === 'pause') {
-    pauseSession(id);
+    if (!pauseSession(id)) {
+      console.error(pc.red(`Failed to pause session (${id}): could not write pause state.`));
+      process.exitCode = 1;
+      return;
+    }
     console.log(`Observation recording paused for this session (${id}).`);
     console.log('Context injection continues. Already-recorded observations are unaffected.');
     return;
   }
 
   if (sub === 'resume') {
-    resumeSession(id);
+    if (!resumeSession(id)) {
+      console.error(pc.red(`Failed to resume session (${id}): could not write pause state.`));
+      process.exitCode = 1;
+      return;
+    }
     console.log(`Observation recording resumed for this session (${id}).`);
     return;
   }

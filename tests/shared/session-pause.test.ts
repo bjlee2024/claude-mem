@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, unlinkSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, unlinkSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -122,6 +122,37 @@ describe('session-pause', () => {
   it('임시 파일을 남기지 않는다', async () => {
     const { pauseSession } = await load();
     pauseSession('s1');
-    expect(existsSync(`${stateFile}.tmp`)).toBe(false);
+    // Temp name is pid-scoped (see write() in session-pause.ts) so concurrent
+    // writers never share one — confirm nothing is left behind under that name.
+    expect(existsSync(`${stateFile}.${process.pid}.tmp`)).toBe(false);
+  });
+
+  it('성공하면 pauseSession/resumeSession이 true를 반환한다', async () => {
+    const { pauseSession, resumeSession } = await load();
+    expect(pauseSession('s1')).toBe(true);
+    expect(resumeSession('s1')).toBe(true);
+  });
+
+  it('쓰기 실패 시 pauseSession/resumeSession이 false를 반환하고 상태는 바뀌지 않는다', async () => {
+    // Simulate a write failure (root-owned state dir, full disk, read-only
+    // $HOME) by pointing PAUSED_SESSIONS_PATH at a directory this process
+    // cannot write into. mkdirSync(dirname, {recursive:true}) is a no-op on an
+    // already-existing dir, so the failure surfaces at writeFileSync (EACCES).
+    const roDir = mkdtempSync(join(tmpdir(), 'sp-ro-'));
+    const roFile = join(roDir, 'paused-sessions.json');
+    mock.module('../../src/shared/paths.js', () => ({ PAUSED_SESSIONS_PATH: roFile }));
+    chmodSync(roDir, 0o500); // read + execute only, no write
+    try {
+      const { pauseSession, resumeSession, isSessionPaused } = await load();
+      expect(pauseSession('blocked')).toBe(false);
+      // A failed write must not fool isSessionPaused into reporting success.
+      expect(isSessionPaused('blocked')).toBe(false);
+      expect(resumeSession('blocked')).toBe(false);
+    } finally {
+      chmodSync(roDir, 0o700);
+      rmSync(roDir, { recursive: true, force: true });
+      // Restore the file-level mock for any later test in this file/suite.
+      mock.module('../../src/shared/paths.js', () => ({ PAUSED_SESSIONS_PATH: stateFile }));
+    }
   });
 });

@@ -10,7 +10,7 @@ import { stripMemoryTagsFromPrompt } from '../../utils/tag-stripping.js';
 import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
-import { isSessionPaused, resumeSession } from '../../shared/session-pause.js';
+import { isSessionPaused } from '../../shared/session-pause.js';
 import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
@@ -18,15 +18,6 @@ import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 export const summarizeHandler: EventHandler = {
   async execute(input: NormalizedHookInput): Promise<HookResult> {
     if (input.cwd && !shouldTrackProject(input.cwd)) {
-      return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
-    }
-
-    if (isSessionPaused(input.sessionId)) {
-      // Stop fires at session end, so this is where the pause entry gets cleared.
-      // Clear first, then skip — reversing the order leaves the entry behind
-      // forever, because the early return would run before the cleanup.
-      resumeSession(input.sessionId);
-      logger.debug('HOOK', 'Session paused, skipping summary', { sessionId: input.sessionId });
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }
 
@@ -43,6 +34,16 @@ export const summarizeHandler: EventHandler = {
         agentId: input.agentId,
         agentType: input.agentType
       });
+      return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
+    }
+
+    if (isSessionPaused(input.sessionId)) {
+      // Stop fires on every turn, not at session end, so this handler cannot use
+      // Stop as an end-of-session signal to clear the pause entry — doing so
+      // would unpause the session after its very next response. The entry is
+      // left in place; only /claude-mem:resume or the 24h TTL (session-pause.ts)
+      // clears it.
+      logger.debug('HOOK', 'Session paused, skipping summary', { sessionId: input.sessionId });
       return { continue: true, suppressOutput: true, exitCode: HOOK_EXIT_CODES.SUCCESS };
     }
 

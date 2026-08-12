@@ -27,13 +27,16 @@ npx @bjlee2024/claude-mem session pause "$CLAUDE_CODE_SESSION_ID"
 
 **Step 3 — tell the user what changed.**
 
-Say all four:
+Say all five:
 
 - Tool-use observations and the end-of-session summary will not be recorded.
+- The text of your prompts is still recorded — pausing does not stop that.
 - Context injection continues — past memory still reaches you.
 - Observations already recorded in this session stay; this does not erase them.
-- It lifts automatically when the session ends. Use `/claude-mem:resume` to turn
-  recording back on sooner.
+- It does NOT lift when the session ends. Run `/claude-mem:resume` to turn
+  recording back on, or it lifts automatically after 24 hours.
 
-The last point matters: without it the user is left wondering whether their next
-session is still paused.
+The last two points matter: without the prompt-text point, a user pausing for
+sensitive work may think nothing about this turn is recorded. Without the
+lifetime point, the user is left believing their next session starts unpaused
+when it does not.

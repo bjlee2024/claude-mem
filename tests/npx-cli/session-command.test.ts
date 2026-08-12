@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test';
-import { mkdtempSync, rmSync, unlinkSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test';
+import { mkdtempSync, rmSync, unlinkSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -34,7 +34,18 @@ afterAll(() => {
 beforeEach(() => {
   // Reset state between tests since PAUSED_SESSIONS_PATH is fixed for the file.
   try { unlinkSync(stateFile); } catch { /* no file yet */ }
-  try { unlinkSync(`${stateFile}.tmp`); } catch { /* no tmp file */ }
+  try { unlinkSync(`${stateFile}.${process.pid}.tmp`); } catch { /* no tmp file */ }
+  // A few tests below set process.exitCode to verify CLI failure behavior.
+  // Bun's process.exitCode is sticky: assigning `undefined` after it has been
+  // set to a truthy value does NOT clear it back (verified directly against
+  // this Bun build), so 0 is the only reliable "clean slate" value.
+  process.exitCode = 0;
+});
+
+afterEach(() => {
+  // Don't let a test that deliberately sets process.exitCode leak into the
+  // overall test run's exit status.
+  process.exitCode = 0;
 });
 
 async function load() {
@@ -97,6 +108,60 @@ describe('session 커맨드', () => {
       expect(logSpy).toHaveBeenCalledWith('paused (abc)');
     } finally {
       logSpy.mockRestore();
+    }
+  });
+
+  it('알 수 없는 하위 명령은 종료 코드 1을 설정한다', async () => {
+    const { runSessionCommand } = await load();
+    const errSpy = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      runSessionCommand(['bogus', 'abc']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it('세션 ID가 없으면 종료 코드 1을 설정한다', async () => {
+    const { runSessionCommand } = await load();
+    const errSpy = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      runSessionCommand(['pause']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it('성공한 명령은 종료 코드를 건드리지 않는다', async () => {
+    const { runSessionCommand } = await load();
+    runSessionCommand(['pause', 'abc']);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('pauseSession 쓰기가 실패하면 CLI가 실패를 알리고 종료 코드 1을 설정하며 성공 메시지를 출력하지 않는다', async () => {
+    // Simulate a write failure (root-owned state dir, full disk, read-only
+    // $HOME) by pointing PAUSED_SESSIONS_PATH at a directory this process
+    // cannot write into.
+    const roDir = mkdtempSync(join(tmpdir(), 'sc-ro-'));
+    const roFile = join(roDir, 'paused-sessions.json');
+    mock.module('../../src/shared/paths.js', () => ({ PAUSED_SESSIONS_PATH: roFile }));
+    chmodSync(roDir, 0o500); // read + execute only, no write
+    const errSpy = spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { runSessionCommand } = await load();
+      runSessionCommand(['pause', 'abc']);
+      expect(process.exitCode).toBe(1);
+      expect(errSpy).toHaveBeenCalled();
+      // Must never claim success when the write actually failed.
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('paused'));
+    } finally {
+      errSpy.mockRestore();
+      logSpy.mockRestore();
+      chmodSync(roDir, 0o700);
+      rmSync(roDir, { recursive: true, force: true });
+      mock.module('../../src/shared/paths.js', () => ({ PAUSED_SESSIONS_PATH: stateFile }));
     }
   });
 });
