@@ -167,6 +167,27 @@ Disabling the gate means Claude will read full files every time, which increases
 
 ---
 
+## 세션 일시 중지 (Session Pause)
+
+`/claude-mem:pause`와 `/claude-mem:resume` 슬래시 커맨드로 **현재 세션 하나**의 관측 기록을 껐다 켤 수 있다.
+
+### 동작 방식
+
+- **`/claude-mem:pause`**: 도구 사용 관측(PostToolUse observation capture)과 세션 종료 시 요약(Stop hook summary) 생성을 멈춘다.
+- **`/claude-mem:resume`**: 기록을 다시 켠다.
+- **컨텍스트 주입은 계속된다.** `SessionStart`에서 과거 관측을 불러와 주입하는 동작은 일시 중지의 영향을 받지 않는다 — 기록을 멈춘 중에도 이전 세션의 기억은 그대로 참고할 수 있다.
+- **이미 기록된 관측은 지워지지 않는다.** `/claude-mem:pause`는 앞으로 기록될 내용만 막을 뿐, 일시 중지 이전에 이미 저장된 관측을 되돌리거나 삭제하지 않는다.
+- **세션 종료 시 자동 해제된다.** 세션이 정상 종료되어 `Stop` 훅이 실행되면 일시 중지 상태는 그 자리에서 지워진다. 다음 세션은 항상 기록 상태로 시작하며, 별도로 `/claude-mem:resume`을 실행할 필요가 없다.
+- **24시간 후 자동 만료된다.** 세션이 크래시하거나 강제 종료되어 `Stop` 훅이 끝내 실행되지 않는 경우를 대비한 안전장치다. 상태 파일은 `~/.claude-mem/paused-sessions.json`에 세션 ID → 일시 중지 시각으로 저장되며, 이 시각이 24시간을 넘긴 항목은 조회 시점에 만료된 것으로 취급된다.
+
+### `CLAUDE_MEM_EXCLUDED_PROJECTS`와의 차이
+
+위 [Project Exclusions](#project-exclusions)에서 설명한 `CLAUDE_MEM_EXCLUDED_PROJECTS`는 프로젝트 경로 단위로 claude-mem 전체를 끈다 — **컨텍스트 주입까지 포함해서** 막힌다. 해당 경로 패턴에 걸리는 프로젝트에서는 과거 관측이 주입되지도, 새 관측이 기록되지도 않는다.
+
+세션 일시 중지는 그보다 훨씬 좁고 일시적이다. 대상은 프로젝트가 아니라 **지금 이 세션 하나**이며, 멈추는 것도 **기록뿐**이다. 컨텍스트 주입은 그대로 유지된다. "이번 세션에서 하는 작업은 기록에 남기고 싶지 않지만, 과거 기억은 계속 참고하고 싶다"는 경우에 쓰는 기능이다.
+
+---
+
 ## How It Fits Together
 
 The File Read Gate is one piece of claude-mem's layered context strategy:
