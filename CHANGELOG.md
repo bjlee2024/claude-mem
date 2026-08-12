@@ -4,6 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.10.0] - 2026-08-12
+
+Adds `/claude-mem:pause` and `/claude-mem:resume` — stop recording observations for the current session while past memory keeps being injected.
+
+**Both client and server side ship in this release.** The slash commands and the CLI live on the client, so a server-only update leaves the commands missing.
+
+## What it's for
+
+```
+/claude-mem:pause    stop recording this session
+/claude-mem:resume   start again
+```
+
+Existing options don't cover this. `CLAUDE_MEM_EXCLUDED_PROJECTS` and `CLAUDE_MEM_INTERNAL=1` both route through `shouldTrackProject`, which gates all four hooks — turning either on also kills context injection. This release is for the case where you want to keep the memory you already have while not adding to it: sensitive work, or a dead end you'd rather not carry forward.
+
+While paused, `PostToolUse` observations and the `Stop` summary are skipped. `UserPromptSubmit` and `PreToolUse` are untouched, so past memory still reaches you.
+
+## Read this before relying on it
+
+**Your prompt text is still recorded.** `session-init` sends the prompt and the worker stores it in `user_prompts`, full-text indexed. Pausing stops tool observations and the session summary — not what you type. If you paused to keep something out of your history, know this before typing it.
+
+**It does not lift when the session ends.** There is no session-end signal to hang that on: the `Stop` hook fires every turn, not once at the end. So a pause lifts only when you run `/claude-mem:resume`, or automatically after 24 hours.
+
+That said, **a new session always starts with recording on** — state is keyed by session id, and each session gets a fresh one. There's nothing to undo tomorrow. The pause only carries over if you reopen the same session with `claude --resume`, and even then only within 24 hours.
+
+**Already-recorded observations stay.** Pausing stops what comes next; it does not erase what's already stored.
+
+## Also in this release
+
+The `session` CLI subcommand the skills call:
+
+```
+npx @bjlee2024/claude-mem session pause|resume|status <sessionId>
+```
+
+It exits non-zero when it cannot write the state file — a root-owned `~/.claude-mem/paused-sessions.json` from an earlier `sudo npx`, a full disk, a read-only `$HOME`. Earlier drafts swallowed those errors and reported success, which is the one failure this feature cannot afford.
+
+## Upgrading
+
+```bash
+npm install -g @bjlee2024/claude-mem@13.10.0
+```
+
+The slash commands appear in a **new session** — Claude Code loads plugin skills at session start.
+
+Server-beta users: rebuild the server too, since the release includes the branch's other changes.
+
+```bash
+npm run build
+docker compose -f docker-compose.my.yml build
+docker compose -f docker-compose.my.yml up -d
+```
+
+## Known limits
+
+- Non-hook ingestion paths (the transcript watcher, the opencode plugin) don't consult the pause. Both are opt-in and non-Claude-Code; the commands are Claude-Code-only by construction.
+- Two windows pausing at the same instant can lose one update — the state file is read-modify-write without a lock. The torn-file hazard is handled (temp files are pid-scoped), the lost-update window is not.
+
+Full detail: [#18](https://github.com/bjlee2024/claude-mem/pull/18).
+
 ## [13.9.0] - 2026-08-12
 
 Adds `/claude-mem:filter me|<name>|off` — a slash command that shows observations from a single git author, so on a shared project you can narrow memory to one person's work and pick up from their history.
