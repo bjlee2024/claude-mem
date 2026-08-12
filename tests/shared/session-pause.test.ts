@@ -12,9 +12,17 @@ import { tmpdir } from 'os';
 // that assumption false — a sibling test file imports paths.ts first, so
 // PAUSED_SESSIONS_PATH ends up pointing at the real default data dir instead
 // of our temp dir. mock.module replaces paths.ts's PAUSED_SESSIONS_PATH
-// export outright, independent of import order, which is what this codebase
-// already uses elsewhere for the same class of problem (see
-// tests/context/formatters/agent-formatter.test.ts).
+// export outright, independent of import order — the same pattern used in
+// tests/services/sync/chroma-mcp-manager-ssl.test.ts.
+//
+// Capture the real exports before mock.module mutates the live namespace,
+// then re-register the snapshot in afterAll: mock.module is process-global
+// and mock.restore() does NOT undo it, so without this every later test file
+// in the same bun process that imports paths.js would see DATA_DIR, DB_PATH,
+// etc. as undefined.
+import * as realPaths from '../../src/shared/paths.js';
+const realPathsSnapshot = { ...realPaths };
+
 const dir = mkdtempSync(join(tmpdir(), 'sp-'));
 const stateFile = join(dir, 'paused-sessions.json');
 
@@ -23,6 +31,7 @@ mock.module('../../src/shared/paths.js', () => ({
 }));
 
 afterAll(() => {
+  mock.module('../../src/shared/paths.js', () => realPathsSnapshot);
   rmSync(dir, { recursive: true, force: true });
 });
 
