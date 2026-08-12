@@ -149,9 +149,17 @@ describe('summarizeHandler — subagent short-circuit', () => {
       cwd: '/tmp',
       platform: 'claude-code',
       transcriptPath: '/tmp/does-not-matter.jsonl',
+      // Provided directly so a fallthrough bypasses the "no assistant message"
+      // guard too and would actually reach the worker dispatch — otherwise the
+      // workerCallLog assertion below can't distinguish "skipped" from
+      // "fell through but got stopped by an unrelated guard".
+      lastAssistantMessage: 'Here is what I did.',
     } as any);
 
     // Cleared by the handler. Fails if the early return runs before the cleanup.
     expect(isSessionPaused('session-summarize-1')).toBe(false);
+    // Summary was actually skipped, not just cleaned up: if execution fell
+    // through past the pause branch it would eventually reach the worker path.
+    expect(workerCallLog.length).toBe(0);
   });
 });
