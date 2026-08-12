@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.9.0] - 2026-08-12
+
+Adds `/claude-mem:filter me|<name>|off` — a slash command that shows observations from a single git author, so on a shared project you can narrow memory to one person's work and pick up from their history.
+
+**Both client and server need this release.** Unlike 13.8.1, the MCP tool schemas and the slash command live on the client side; a server-only upgrade leaves the command missing entirely.
+
+## What you get
+
+```
+/claude-mem:filter me       → observations you recorded
+/claude-mem:filter alice    → observations alice recorded
+/claude-mem:filter off      → most recent observations, no author filter
+```
+
+13.8.0 started recording the git author on each Observation and gave `search` a `gitUser` parameter — but that parameter was unusable for the obvious question ("what did I work on here?") because a search term was mandatory. This release removes that requirement: `/v1/search` now accepts a request with no `query` and returns the newest observations, optionally scoped to one author.
+
+## Under the hood
+
+The postgres search splits into two branches. With a search term it keeps the existing full-text match and relevance ordering; without one it drops the tsvector predicate entirely and orders by recency. Each branch builds its own SQL and parameter array rather than splicing an optional predicate into a shared template — the placeholder numbering differs between them, and postgres answers a mismatched query with wrong rows rather than an error.
+
+An empty string is still rejected, so a caller cannot accidentally turn a narrow search into an unbounded one.
+
+On the MCP side only `observation_search` loses its mandatory `query`. `observation_context` still needs its query as the context-injection search term, and `smart_search` is unrelated code-structure search.
+
+## Known behavior
+
+**Observations recorded before author capture shipped have no author**, so `me` or a named filter excludes them. An empty result usually means "this project has no authored observations yet", not lost history — the command says so when it happens, and `off` shows everything.
+
+Sessions capture the author once, at session start. A long-running session that began before 13.8.0 keeps producing unattributed observations until it rolls over.
+
+## Upgrading
+
+```bash
+npm install -g @bjlee2024/claude-mem@13.9.0
+```
+
+The slash command appears in a **new session** — Claude Code loads plugin skills at session start.
+
+If you run the dockerized server, rebuild it too:
+
+```bash
+npm run build
+docker compose -f docker-compose.my.yml build
+docker compose -f docker-compose.my.yml up -d
+```
+
+An older server rejects a query-less search with a 400, so the command fails until both sides are updated.
+
+## Performance note
+
+An author-filtered query with no search term cannot use an index; it walks the project until it fills the result limit. Measured at 73ms on a 20,000-row project versus 0.098ms without the author predicate. Fine at current scale, linear in project size.
+
+Full detail: [#17](https://github.com/bjlee2024/claude-mem/pull/17).
+
 ## [13.8.0] - 2026-08-11
 
 Every Observation now records the git author (`git config user.name`), shows it as `by <user>, <title>` wherever titles appear, and can be filtered by it. On a shared project you can narrow memory to one person's work and pick up from their history.
