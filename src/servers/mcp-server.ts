@@ -359,7 +359,9 @@ async function handleObservationRecordEvent(
 
 interface ObservationSearchArgs {
   projectId?: string;
-  query: string;
+  // Optional: omitting it returns the most recent observations instead of
+  // full-text matches. Mirrors the /v1/search schema.
+  query?: string;
   limit?: number;
   gitUser?: string;
 }
@@ -369,13 +371,10 @@ async function handleObservationSearch(
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   try {
     const ctx = requireServerBetaForObservationTool('observation_search');
-    if (typeof args?.query !== 'string' || args.query.trim().length === 0) {
-      throw new Error('observation_search: "query" is required');
-    }
     const projectId = await effectiveProjectId(ctx, args.projectId);
     const request: ServerBetaSearchObservationsRequest = {
       projectId,
-      query: args.query,
+      ...(typeof args.query === 'string' && args.query.trim().length > 0 ? { query: args.query } : {}),
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
     };
@@ -536,9 +535,6 @@ NEVER fetch full details without filtering first. 10x token savings.`,
       if (selectRuntime() !== 'worker') {
         try {
           const ctx = requireServerBetaForObservationTool('search');
-          if (typeof args?.query !== 'string' || args.query.trim().length === 0) {
-            throw new Error('search: "query" is required');
-          }
           // legacy arg is `project` (a NAME); resolve name->uuid, else fall back to cwd-resolved project
           let projectId: string;
           if (typeof args.project === 'string' && args.project.trim().length > 0) {
@@ -549,7 +545,7 @@ NEVER fetch full details without filtering first. 10x token savings.`,
           const limit = typeof args.limit === 'number' ? args.limit : undefined;
           const response = await ctx.client.searchObservations({
             projectId,
-            query: args.query,
+            ...(typeof args.query === 'string' && args.query.trim().length > 0 ? { query: args.query } : {}),
             ...(limit !== undefined ? { limit } : {}),
             ...(args.gitUser !== undefined ? { gitUser: args.gitUser } : {}),
           });
@@ -655,16 +651,15 @@ NEVER fetch full details without filtering first. 10x token savings.`,
   },
   {
     name: 'observation_search',
-    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (required), projectId (optional), limit (default 20, max 100), gitUser (optional, filter by git author).',
+    description: 'Full-text search across generated observations using server-beta\'s GIN tsvector index (Phase 1). Calls /v1/search. Server-beta runtime only. Params: query (optional — omit to get the most recent observations), projectId (optional), limit (default 20, max 100), gitUser (optional, filter by git author).',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'string' },
-        query: { type: 'string', description: 'Search query (required)' },
+        query: { type: 'string', minLength: 1, description: 'Search query (optional; omit for most-recent ordering)' },
         limit: { type: 'number', description: 'Max results (default 20, max 100)' },
         gitUser: { type: 'string', minLength: 1, description: 'Filter by git author (git config user.name)' },
       },
-      required: ['query'],
       additionalProperties: false,
     },
     handler: async (args: any) => handleObservationSearch(args ?? {}),

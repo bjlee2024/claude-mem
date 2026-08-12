@@ -71,6 +71,18 @@ const EVENT_QUERY_SCHEMA = z.object({
   wait: z.union([z.literal('true'), z.literal('false')]).optional(),
 });
 
+// Exported so tests can assert the contract directly instead of duplicating it.
+export const SearchObservationsSchema = z.object({
+  projectId: z.string().min(1),
+  // Optional: with no query the search returns the most recent observations
+  // instead of full-text matches. Empty string stays invalid so a caller
+  // cannot accidentally send one.
+  query: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(100).optional(),
+  // Optional author filter — see PostgresObservationRepository#search.
+  gitUser: z.string().min(1).optional(),
+});
+
 // `?wait=true` polls the outbox row until it reaches a terminal status
 // (`completed` / `failed` / `cancelled`). Hard-capped so a stuck provider can
 // never block an HTTP worker indefinitely; callers always get a response.
@@ -951,13 +963,7 @@ export class ServerV1PostgresRoutes implements RouteHandler {
     // The MCP `observation_search` tool calls this endpoint via HTTP so the
     // single source of truth for the read path is the REST core.
     app.post('/v1/search', readAuth, this.handleCreate(
-      z.object({
-        projectId: z.string().min(1),
-        query: z.string().min(1),
-        limit: z.number().int().positive().max(100).optional(),
-        // Optional author filter — see PostgresObservationRepository#search.
-        gitUser: z.string().min(1).optional(),
-      }),
+      SearchObservationsSchema,
       async (req, res, body) => {
         const teamId = this.requireTeamId(req, res);
         if (!teamId) return;
@@ -972,8 +978,8 @@ export class ServerV1PostgresRoutes implements RouteHandler {
             gitUser: body.gitUser,
           });
           await this.auditRead(req, 'observation.read', null, body.projectId, {
-            mode: 'search',
-            query: body.query,
+            mode: body.query ? 'search' : 'recent',
+            query: body.query ?? null,
             limit: body.limit ?? 20,
             resultCount: results.length,
             observationIds: results.map(o => o.id),

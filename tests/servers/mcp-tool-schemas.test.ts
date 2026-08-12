@@ -63,15 +63,16 @@ describe('MCP tool inputSchema declarations', () => {
     expect(section).toContain('handleObservationRecordEvent');
   });
 
-  it('observation_search declares query as required and accepts limit', async () => {
+  it('observation_search declares query as optional (minLength 1) and accepts limit', async () => {
     const src = await Bun.file(mcpServerPath).text();
     const section = src.slice(
       src.indexOf("name: 'observation_search'"),
       src.indexOf("name: 'observation_context'"),
     );
     expect(section).toContain('query:');
+    expect(section).toContain('minLength: 1');
     expect(section).toContain('limit:');
-    expect(section).toContain("required: ['query']");
+    expect(section).not.toContain("required: ['query']");
     expect(section).toContain('handleObservationSearch');
   });
 
