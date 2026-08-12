@@ -60,6 +60,7 @@ ${pc.bold('Runtime Commands')} (requires Bun, delegates to installed plugin):
   ${pc.cyan('npx @bjlee2024/claude-mem cleanup [--dry-run]')}    Run one-time v12.4.3 pollution cleanup (or preview counts)
   ${pc.cyan('npx @bjlee2024/claude-mem transcript watch')}     Start transcript watcher
   ${pc.cyan('npx @bjlee2024/claude-mem client status')}        Show thin-client runtime, server URL, reachability, and offline spool depth
+  ${pc.cyan('npx @bjlee2024/claude-mem session pause|resume|status <id>')}   Pause or resume observation recording for one session
 
 ${pc.bold('IDE Identifiers')}:
   claude-code, cursor, gemini-cli, opencode, openclaw,
@@ -249,6 +250,12 @@ async function main(): Promise<void> {
         console.error(`Usage: npx @bjlee2024/claude-mem transcript watch`);
         process.exit(1);
       }
+      break;
+    }
+
+    case 'session': {
+      const { runSessionCommand } = await import('./commands/session.js');
+      runSessionCommand(args.slice(1));
       break;
     }
 

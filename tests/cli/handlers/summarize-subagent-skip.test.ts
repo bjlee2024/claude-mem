@@ -136,4 +136,36 @@ describe('summarizeHandler — subagent short-circuit', () => {
     expect(result.exitCode).toBe(0);
     expect(workerCallLog.length).toBe(0);
   });
+
+  it('중단된 세션의 Stop은 요약을 건너뛰고 중단 항목은 그대로 남는다', async () => {
+    const { pauseSession, isSessionPaused } = await import('../../../src/shared/session-pause.js');
+    const { summarizeHandler } = await import('../../../src/cli/handlers/summarize.js');
+
+    pauseSession('session-summarize-1');
+    expect(isSessionPaused('session-summarize-1')).toBe(true);
+
+    const result = await summarizeHandler.execute({
+      sessionId: 'session-summarize-1',
+      cwd: '/tmp',
+      platform: 'claude-code',
+      transcriptPath: '/tmp/does-not-matter.jsonl',
+      // Provided directly so a fallthrough bypasses the "no assistant message"
+      // guard too and would actually reach the worker dispatch — otherwise the
+      // workerCallLog assertion below can't distinguish "skipped" from
+      // "fell through but got stopped by an unrelated guard".
+      lastAssistantMessage: 'Here is what I did.',
+    } as any);
+
+    expect(result.continue).toBe(true);
+    expect(result.suppressOutput).toBe(true);
+    expect(result.exitCode).toBe(0);
+    // Summary was actually skipped, not just returned early for some other
+    // reason: if execution fell through past the pause branch it would
+    // eventually reach the worker path.
+    expect(workerCallLog.length).toBe(0);
+    // Stop fires every turn, not at session end — the pause entry must survive
+    // this call. Clearing it here would silently resume recording after the
+    // very next response, which is the bug this branch exists to avoid.
+    expect(isSessionPaused('session-summarize-1')).toBe(true);
+  });
 });
