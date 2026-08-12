@@ -34,9 +34,15 @@ Say all five:
 - Context injection continues — past memory still reaches you.
 - Observations already recorded in this session stay; this does not erase them.
 - It does NOT lift when the session ends. Run `/claude-mem:resume` to turn
-  recording back on, or it lifts automatically after 24 hours.
+  recording back on, or it lifts automatically after 24 hours. A new session
+  always starts with recording on, so there is nothing to undo tomorrow — the
+  pause only carries over if you reopen this same session with `claude --resume`.
 
 The last two points matter: without the prompt-text point, a user pausing for
 sensitive work may think nothing about this turn is recorded. Without the
-lifetime point, the user is left believing their next session starts unpaused
-when it does not.
+lifetime point, a user who wants recording back on this session may assume
+ending the session is enough.
+
+If the `session pause` command exits non-zero, say plainly that the pause did
+NOT take effect and stop — do not relay the reassurances above. The same
+applies to `/claude-mem:resume`.

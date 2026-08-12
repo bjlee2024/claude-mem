@@ -32,3 +32,6 @@ will be backfilled.
 
 If the user was not paused to begin with, the command is harmless; say that
 recording was already on rather than implying something changed.
+
+If the command exits non-zero, say plainly that recording was NOT turned back
+on and stop — do not tell the user it resumed.
