@@ -859,6 +859,7 @@ Private-MAC: `+I.digest().toHex()+`\r
         WHERE e.server_session_id = $1
           AND e.project_id = $2
           AND e.team_id = $3
+          AND e.event_type <> 'user_prompt'
           AND NOT EXISTS (
             SELECT 1 FROM observation_generation_jobs j
             WHERE j.agent_event_id = e.id
