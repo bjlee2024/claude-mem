@@ -139,10 +139,95 @@ describe('ServerViewerDataRoutes (viewer data API)', () => {
     expect(body.hasMore).toBe(false);
   });
 
-  it('GET /api/prompts returns an empty page (stub)', async () => {
+  it('GET /api/prompts returns an empty page when no user_prompt events exist', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/prompts`);
     const body = await res.json() as any;
     expect(body).toEqual({ items: [], hasMore: false, offset: 0, limit: 50 });
+  });
+
+  describe('GET /api/prompts with agent_events rows', () => {
+    let sessionId: string;
+
+    beforeEach(async () => {
+      sessionId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO server_sessions (id, project_id, team_id, content_session_id, platform_source)
+         VALUES ($1, $2, $3, 'content-sess-1', 'claude')`,
+        [sessionId, projectId, teamId]
+      );
+      // Two prompt events attached to a known session, oldest first so
+      // row_number() PARTITION BY server_session_id assigns 1 then 2.
+      await client.query(
+        `INSERT INTO agent_events
+           (id, project_id, team_id, server_session_id, source_adapter, idempotency_key, event_type, payload, occurred_at)
+         VALUES ($1, $2, $3, $4, 'test', $5, 'user_prompt', $6, now() - interval '2 minutes')`,
+        [crypto.randomUUID(), projectId, teamId, sessionId, crypto.randomUUID(), JSON.stringify({ prompt: 'first prompt' })]
+      );
+      await client.query(
+        `INSERT INTO agent_events
+           (id, project_id, team_id, server_session_id, source_adapter, idempotency_key, event_type, payload, occurred_at)
+         VALUES ($1, $2, $3, $4, 'test', $5, 'user_prompt', $6, now() - interval '1 minute')`,
+        [crypto.randomUUID(), projectId, teamId, sessionId, crypto.randomUUID(), JSON.stringify({ prompt: 'second prompt' })]
+      );
+      // A prompt event with no server_session_id — must still come back via
+      // the LEFT JOIN, with blank session fields rather than being dropped.
+      await client.query(
+        `INSERT INTO agent_events
+           (id, project_id, team_id, server_session_id, source_adapter, idempotency_key, event_type, payload, occurred_at)
+         VALUES ($1, $2, $3, NULL, 'test', $4, 'user_prompt', $5, now())`,
+        [crypto.randomUUID(), projectId, teamId, crypto.randomUUID(), JSON.stringify({ prompt: 'orphan prompt' })]
+      );
+      // A non-prompt event that must be excluded by the event_type filter.
+      await client.query(
+        `INSERT INTO agent_events
+           (id, project_id, team_id, server_session_id, source_adapter, idempotency_key, event_type, payload, occurred_at)
+         VALUES ($1, $2, $3, $4, 'test', $5, 'tool_use', $6, now())`,
+        [crypto.randomUUID(), projectId, teamId, sessionId, crypto.randomUUID(), JSON.stringify({ tool: 'Read' })]
+      );
+    });
+
+    it('returns only user_prompt events, newest first, excluding tool_use rows', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/prompts?limit=10&offset=0`);
+      expect(res.status).toBe(200);
+      const body = await res.json() as { items: any[]; hasMore: boolean; offset: number; limit: number };
+      expect(body.items).toHaveLength(3);
+      expect(body.items.map((p: any) => p.prompt_text)).toEqual([
+        'orphan prompt',
+        'second prompt',
+        'first prompt',
+      ]);
+      expect(body.hasMore).toBe(false);
+    });
+
+    it('returns a prompt with no server_session_id via LEFT JOIN, with blank session fields', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/prompts?limit=10&offset=0`);
+      const body = await res.json() as { items: any[] };
+      const orphan = body.items.find((p: any) => p.prompt_text === 'orphan prompt');
+      expect(orphan).toBeTruthy();
+      expect(orphan.content_session_id).toBe('');
+      expect(orphan.platform_source).toBe('claude');
+    });
+
+    it('coerces prompt_number from Postgres bigint to a JS number', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/prompts?limit=10&offset=0`);
+      const body = await res.json() as { items: any[] };
+      for (const item of body.items) {
+        expect(typeof item.prompt_number).toBe('number');
+      }
+      const first = body.items.find((p: any) => p.prompt_text === 'first prompt');
+      const second = body.items.find((p: any) => p.prompt_text === 'second prompt');
+      expect(first.prompt_number).toBe(1);
+      expect(second.prompt_number).toBe(2);
+    });
+
+    it('carries content_session_id and platform_source from the joined session', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/prompts?limit=10&offset=0`);
+      const body = await res.json() as { items: any[] };
+      const first = body.items.find((p: any) => p.prompt_text === 'first prompt');
+      expect(first.content_session_id).toBe('content-sess-1');
+      expect(first.platform_source).toBe('claude');
+      expect(first.project).toBe('proj-a');
+    });
   });
 
   it('GET /api/settings returns {} (viewer applies defaults)', async () => {
