@@ -107,6 +107,12 @@ let flushImpl: (sender: unknown) => Promise<void> = async () => {};
 let writerRecordEventCalls: Array<unknown> = [];
 let writerRecordEventImpl: (input: unknown) => Promise<void> = async () => {};
 
+// Captures direct client.recordEvent calls (the user_prompt event path added
+// by session-init). Distinct from writerRecordEventCalls above, which
+// captures the ClientWriter-routed path used by summarize.ts.
+let recordEventCalls: Array<Record<string, unknown>> = [];
+let recordEventImpl: (input: Record<string, unknown>) => Promise<unknown> = async () => ({});
+
 const spoolStub = {
   flush: (sender: unknown) => {
     flushCalls.push(sender);
@@ -134,6 +140,10 @@ const clientStub = {
   endSession: (input: unknown) => {
     endSessionCalls.push(input);
     return endSessionImpl();
+  },
+  recordEvent: (input: Record<string, unknown>) => {
+    recordEventCalls.push(input);
+    return recordEventImpl(input);
   },
   forwardLogs: (_lines: string[]) => Promise.resolve(),
 };
@@ -183,6 +193,8 @@ beforeEach(() => {
   flushImpl = async () => {};
   writerRecordEventCalls = [];
   writerRecordEventImpl = async () => {};
+  recordEventCalls = [];
+  recordEventImpl = async () => ({});
   madeSenderClient = null;
   loggerSpies = [
     spyOn(logger, 'info').mockImplementation(() => {}),
@@ -304,6 +316,36 @@ describe('sessionInitHandler — client runtime branch', () => {
       // asymmetry is the whole point of the feature.
       const result = await sessionInitHandler.execute(initInput());
       expect(result.continue).toBe(true);
+    } finally {
+      resumeSession('session-init-client-1');
+    }
+  });
+
+  it('세션 시작 후 user_prompt 이벤트를 generate:false로 보낸다', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    await sessionInitHandler.execute(initInput());
+
+    const promptEvents = recordEventCalls.filter(c => c.eventType === 'user_prompt');
+    expect(promptEvents.length).toBe(1);
+    expect(promptEvents[0].payload).toEqual({ prompt: 'Hello, do something' });
+    // generate:false is what keeps a prompt from spawning an LLM job. Its
+    // absence costs money silently, so pin it.
+    expect(promptEvents[0].generate).toBe(false);
+  });
+
+  it('일시 중지된 세션에서는 프롬프트 이벤트를 보내지 않는다', async () => {
+    const { pauseSession, resumeSession } = await import('../../../src/shared/session-pause.js');
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    pauseSession('session-init-client-1');
+    try {
+      await sessionInitHandler.execute(initInput());
+
+      expect(recordEventCalls.filter(c => c.eventType === 'user_prompt').length).toBe(0);
+      // The asymmetry is the feature: the session still gets created, so later
+      // events can attach to it, and context injection is untouched.
+      expect(startSessionCalls.length).toBe(1);
     } finally {
       resumeSession('session-init-client-1');
     }

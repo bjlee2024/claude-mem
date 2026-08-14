@@ -15,6 +15,7 @@ import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 import { getGitUser } from '../../utils/git-user.js';
+import { isSessionPaused } from '../../shared/session-pause.js';
 
 interface SessionInitResponse {
   sessionDbId: number;
@@ -61,8 +62,9 @@ export const sessionInitHandler: EventHandler = {
     if (runtime.runtime === 'client') {
       const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
       try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      let projectId: string | undefined;
       try {
-        const projectId = fixedProjectId ?? await resolver.resolve(cwd);
+        projectId = fixedProjectId ?? await resolver.resolve(cwd);
         await client.startSession({
           projectId,
           externalSessionId: sessionId,
@@ -74,6 +76,25 @@ export const sessionInitHandler: EventHandler = {
         });
       } catch (error) {
         logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
+      }
+      // Prompt text is a separate event so every prompt is captured — the
+      // session row only holds the first one, because startSession returns
+      // early for an existing session. generate:false keeps this from
+      // queueing an observation-generation job.
+      if (projectId && !isSessionPaused(sessionId)) {
+        try {
+          await client.recordEvent({
+            projectId,
+            contentSessionId: sessionId,
+            sourceType: 'hook',
+            eventType: 'user_prompt',
+            occurredAtEpoch: Date.now(),
+            payload: { prompt },
+            generate: false,
+          });
+        } catch (error) {
+          logger.error('HOOK', 'client user_prompt event failed (best-effort)', { error: String(error) });
+        }
       }
       const pending = logger.drainForwardBuffer();
       if (pending.length) { await client.forwardLogs(pending); }
@@ -94,6 +115,25 @@ export const sessionInitHandler: EventHandler = {
           contentSessionId: sessionId,
           project,
         });
+        // Prompt text is a separate event so every prompt is captured — the
+        // session row only holds the first one, because startSession returns
+        // early for an existing session. generate:false keeps this from
+        // queueing an observation-generation job.
+        if (!isSessionPaused(sessionId)) {
+          try {
+            await runtime.client.recordEvent({
+              projectId: runtime.projectId,
+              contentSessionId: sessionId,
+              sourceType: 'hook',
+              eventType: 'user_prompt',
+              occurredAtEpoch: Date.now(),
+              payload: { prompt },
+              generate: false,
+            });
+          } catch (error) {
+            logger.error('HOOK', 'server-beta user_prompt event failed (best-effort)', { error: String(error) });
+          }
+        }
         // Server-beta does not currently support the same context-injection
         // protocol as the worker. Skip semantic injection in server-beta mode
         // until the server-beta context endpoint exists.
