@@ -51,6 +51,33 @@ export interface ViewerObservationRow {
   created_at: Date | string;
 }
 
+// Row shape for the /api/prompts query. LEFT-joined session/project fields can
+// be null: a prompt event can arrive before its server_sessions row exists.
+interface ViewerPromptRow {
+  id: string;
+  content_session_id: string | null;
+  project_name: string | null;
+  platform_source: string | null;
+  prompt_text: string | null;
+  occurred_at: Date;
+  prompt_number: string;
+}
+
+// row_number() returns Postgres bigint, which the pg driver hands back as a
+// string — Number() converts it to what the viewer's UserPrompt.prompt_number
+// (number) expects.
+function mapPromptToViewer(row: ViewerPromptRow) {
+  return {
+    id: row.id,
+    content_session_id: row.content_session_id ?? '',
+    project: row.project_name ?? '',
+    platform_source: row.platform_source ?? 'claude',
+    prompt_number: Number(row.prompt_number),
+    prompt_text: row.prompt_text ?? '',
+    created_at_epoch: row.occurred_at.getTime(),
+  };
+}
+
 function asStringArrayJson(value: unknown): string | null {
   if (Array.isArray(value)) return JSON.stringify(value);
   return null;
@@ -143,10 +170,7 @@ export class ServerViewerDataRoutes implements RouteHandler {
   setupRoutes(app: Application): void {
     app.get('/api/observations', (req, res) => this.handleObservations(req, res, false));
     app.get('/api/summaries', (req, res) => this.handleObservations(req, res, true));
-    app.get('/api/prompts', (req, res) => {
-      const { offset, limit } = parsePagination(req);
-      res.json({ items: [], hasMore: false, offset, limit });
-    });
+    app.get('/api/prompts', (req, res) => this.handlePrompts(req, res));
     app.get('/api/projects', (req, res) => this.handleProjects(req, res));
     app.get('/api/stats', (req, res) => this.handleStats(req, res));
     app.get('/api/processing-status', (req, res) => this.handleProcessingStatus(req, res));
@@ -245,6 +269,42 @@ export class ServerViewerDataRoutes implements RouteHandler {
       const label = summariesOnly ? 'summaries' : 'observations';
       logger.error('SYSTEM', `viewer /api/${label} failed`, { error: String(err) });
       res.status(500).json({ error: 'InternalError', message: `Failed to list ${label}` });
+    }
+  }
+
+  // A prompt event can arrive before its server_sessions row exists (or
+  // reference a project without one), so the JOINs must be LEFT — an INNER
+  // JOIN would silently drop those rows even though the prompt text is there.
+  private async handlePrompts(req: Request, res: Response): Promise<void> {
+    try {
+      const { offset, limit, project } = parsePagination(req);
+      const projectFilter = project ? 'AND p.name = $3' : '';
+      const params: unknown[] = project ? [limit + 1, offset, project] : [limit + 1, offset];
+      const result = await this.pool.query<ViewerPromptRow>(
+        `SELECT e.id,
+                s.content_session_id,
+                p.name AS project_name,
+                s.platform_source,
+                e.payload->>'prompt' AS prompt_text,
+                e.occurred_at,
+                row_number() OVER (
+                  PARTITION BY e.server_session_id ORDER BY e.occurred_at ASC
+                ) AS prompt_number
+           FROM agent_events e
+           LEFT JOIN server_sessions s ON e.server_session_id = s.id
+           LEFT JOIN projects p ON e.project_id = p.id
+          WHERE e.event_type = 'user_prompt' ${projectFilter}
+          ORDER BY e.occurred_at DESC
+          LIMIT $1 OFFSET $2`,
+        params
+      );
+      const rows = result.rows;
+      const hasMore = rows.length > limit;
+      const items = rows.slice(0, limit).map(mapPromptToViewer);
+      res.json({ items, hasMore, offset, limit });
+    } catch (err) {
+      logger.error('SYSTEM', 'viewer /api/prompts failed', { error: String(err) });
+      res.status(500).json({ error: 'InternalError', message: 'Failed to list prompts' });
     }
   }
 
