@@ -72,10 +72,12 @@ mock.module('../../../src/shared/should-track-project.js', () => ({
   shouldTrackProject: () => true,
 }));
 
+// stripMemoryTagsFromPrompt is left as the REAL implementation (not stubbed
+// to identity) so the F2 private-tag-stripping tests below exercise actual
+// behavior, not a pass-through.
 mock.module('../../../src/utils/tag-stripping.js', () => ({
   ...realTagStrippingSnapshot,
   isInternalProtocolPayload: () => false,
-  stripMemoryTagsFromPrompt: (s: string) => s,
 }));
 
 mock.module('../../../src/shared/platform-source.js', () => ({
@@ -107,6 +109,12 @@ let flushImpl: (sender: unknown) => Promise<void> = async () => {};
 let writerRecordEventCalls: Array<unknown> = [];
 let writerRecordEventImpl: (input: unknown) => Promise<void> = async () => {};
 
+// Captures direct client.recordEvent calls (the user_prompt event path added
+// by session-init). Distinct from writerRecordEventCalls above, which
+// captures the ClientWriter-routed path used by summarize.ts.
+let recordEventCalls: Array<Record<string, unknown>> = [];
+let recordEventImpl: (input: Record<string, unknown>) => Promise<unknown> = async () => ({});
+
 const spoolStub = {
   flush: (sender: unknown) => {
     flushCalls.push(sender);
@@ -134,6 +142,10 @@ const clientStub = {
   endSession: (input: unknown) => {
     endSessionCalls.push(input);
     return endSessionImpl();
+  },
+  recordEvent: (input: Record<string, unknown>) => {
+    recordEventCalls.push(input);
+    return recordEventImpl(input);
   },
   forwardLogs: (_lines: string[]) => Promise.resolve(),
 };
@@ -183,6 +195,8 @@ beforeEach(() => {
   flushImpl = async () => {};
   writerRecordEventCalls = [];
   writerRecordEventImpl = async () => {};
+  recordEventCalls = [];
+  recordEventImpl = async () => ({});
   madeSenderClient = null;
   loggerSpies = [
     spyOn(logger, 'info').mockImplementation(() => {}),
@@ -307,6 +321,66 @@ describe('sessionInitHandler — client runtime branch', () => {
     } finally {
       resumeSession('session-init-client-1');
     }
+  });
+
+  it('세션 시작 후 user_prompt 이벤트를 generate:false로 보낸다', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    await sessionInitHandler.execute(initInput());
+
+    const promptEvents = recordEventCalls.filter(c => c.eventType === 'user_prompt');
+    expect(promptEvents.length).toBe(1);
+    expect(promptEvents[0].payload).toEqual({ prompt: 'Hello, do something' });
+    // generate:false is what keeps a prompt from spawning an LLM job. Its
+    // absence costs money silently, so pin it.
+    expect(promptEvents[0].generate).toBe(false);
+  });
+
+  it('일시 중지된 세션에서는 프롬프트 이벤트를 보내지 않는다', async () => {
+    const { pauseSession, resumeSession } = await import('../../../src/shared/session-pause.js');
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    pauseSession('session-init-client-1');
+    try {
+      await sessionInitHandler.execute(initInput());
+
+      expect(recordEventCalls.filter(c => c.eventType === 'user_prompt').length).toBe(0);
+      // The asymmetry is the feature: the session still gets created, so later
+      // events can attach to it, and context injection is untouched.
+      expect(startSessionCalls.length).toBe(1);
+    } finally {
+      resumeSession('session-init-client-1');
+    }
+  });
+
+  it('<private> 태그로 감싼 부분은 이벤트 payload에 도달하기 전에 제거된다 (F2)', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    await sessionInitHandler.execute({
+      ...initInput(),
+      prompt: 'rotate this key <private>AKIA1234567890EXAMPLE</private> please',
+    });
+
+    const promptEvents = recordEventCalls.filter(c => c.eventType === 'user_prompt');
+    expect(promptEvents.length).toBe(1);
+    const payload = promptEvents[0].payload as { prompt: string };
+    expect(payload.prompt).not.toContain('AKIA1234567890EXAMPLE');
+    expect(payload.prompt).not.toContain('<private>');
+    expect(payload.prompt).toBe('rotate this key  please');
+  });
+
+  it('프롬프트 전체가 private이면 user_prompt 이벤트를 아예 보내지 않는다 (F2)', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    const result = await sessionInitHandler.execute({
+      ...initInput(),
+      prompt: '<private>AKIA1234567890EXAMPLE rotate this</private>',
+    });
+
+    expect(recordEventCalls.filter(c => c.eventType === 'user_prompt').length).toBe(0);
+    // Session creation is still unconditional even when the whole prompt is private.
+    expect(startSessionCalls.length).toBe(1);
+    expect(result.continue).toBe(true);
   });
 });
 

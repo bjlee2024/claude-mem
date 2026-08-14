@@ -10,11 +10,12 @@ import { HOOK_EXIT_CODES } from '../../shared/hook-constants.js';
 import { shouldTrackProject } from '../../shared/should-track-project.js';
 import { loadFromFileOnce } from '../../shared/hook-settings.js';
 import { normalizePlatformSource } from '../../shared/platform-source.js';
-import { isInternalProtocolPayload } from '../../utils/tag-stripping.js';
+import { isInternalProtocolPayload, stripMemoryTagsFromPrompt } from '../../utils/tag-stripping.js';
 import { resolveRuntimeContext, buildClientContext, logServerBetaFallback } from '../../services/hooks/runtime-selector.js';
 import { isServerBetaClientError } from '../../services/hooks/server-beta-client.js';
 import { makeSpoolSender } from '../../services/hooks/spool-flush.js';
 import { getGitUser } from '../../utils/git-user.js';
+import { isSessionPaused } from '../../shared/session-pause.js';
 
 interface SessionInitResponse {
   sessionDbId: number;
@@ -61,8 +62,9 @@ export const sessionInitHandler: EventHandler = {
     if (runtime.runtime === 'client') {
       const { client, resolver, spool, fixedProjectId } = buildClientContext(runtime);
       try { await spool.flush(makeSpoolSender({ client })); } catch { /* best-effort */ }
+      let projectId: string | undefined;
       try {
-        const projectId = fixedProjectId ?? await resolver.resolve(cwd);
+        projectId = fixedProjectId ?? await resolver.resolve(cwd);
         await client.startSession({
           projectId,
           externalSessionId: sessionId,
@@ -74,6 +76,31 @@ export const sessionInitHandler: EventHandler = {
         });
       } catch (error) {
         logger.error('HOOK', 'client startSession failed (best-effort)', { error: String(error) });
+      }
+      // Prompt text is a separate event so every prompt is captured — the
+      // session row only holds the first one, because startSession returns
+      // early for an existing session. generate:false keeps this from
+      // queueing an observation-generation job. Strip <private> (etc.) tags
+      // the same way the worker path does (SessionRoutes.ts) before the text
+      // ever reaches the event payload, and skip the event entirely if the
+      // whole prompt was private.
+      if (projectId && !isSessionPaused(sessionId)) {
+        const cleanedPrompt = stripMemoryTagsFromPrompt(prompt);
+        if (cleanedPrompt) {
+          try {
+            await client.recordEvent({
+              projectId,
+              contentSessionId: sessionId,
+              sourceType: 'hook',
+              eventType: 'user_prompt',
+              occurredAtEpoch: Date.now(),
+              payload: { prompt: cleanedPrompt },
+              generate: false,
+            });
+          } catch (error) {
+            logger.error('HOOK', 'client user_prompt event failed (best-effort)', { error: String(error) });
+          }
+        }
       }
       const pending = logger.drainForwardBuffer();
       if (pending.length) { await client.forwardLogs(pending); }
@@ -94,6 +121,31 @@ export const sessionInitHandler: EventHandler = {
           contentSessionId: sessionId,
           project,
         });
+        // Prompt text is a separate event so every prompt is captured — the
+        // session row only holds the first one, because startSession returns
+        // early for an existing session. generate:false keeps this from
+        // queueing an observation-generation job. Strip <private> (etc.) tags
+        // the same way the worker path does (SessionRoutes.ts) before the text
+        // ever reaches the event payload, and skip the event entirely if the
+        // whole prompt was private.
+        if (!isSessionPaused(sessionId)) {
+          const cleanedPrompt = stripMemoryTagsFromPrompt(prompt);
+          if (cleanedPrompt) {
+            try {
+              await runtime.client.recordEvent({
+                projectId: runtime.projectId,
+                contentSessionId: sessionId,
+                sourceType: 'hook',
+                eventType: 'user_prompt',
+                occurredAtEpoch: Date.now(),
+                payload: { prompt: cleanedPrompt },
+                generate: false,
+              });
+            } catch (error) {
+              logger.error('HOOK', 'server-beta user_prompt event failed (best-effort)', { error: String(error) });
+            }
+          }
+        }
         // Server-beta does not currently support the same context-injection
         // protocol as the worker. Skip semantic injection in server-beta mode
         // until the server-beta context endpoint exists.
@@ -117,16 +169,35 @@ export const sessionInitHandler: EventHandler = {
 
     logger.debug('HOOK', 'session-init: Calling /api/sessions/init', { contentSessionId: sessionId, project });
 
+    // Worker's /api/sessions/init both creates the session (needed for
+    // sessionDbId/promptNumber/context injection below) and persists the
+    // prompt text into user_prompts (SessionRoutes.ts saveUserPrompt) — there
+    // is no separate event to gate the way client/server-beta gate
+    // recordEvent above. While paused, omit `prompt` from the request so the
+    // real text is never put on the wire, AND send an explicit `paused: true`
+    // flag. The flag is required: an omitted `prompt` is indistinguishable on
+    // the route side from a genuine media-only prompt (both arrive as
+    // `undefined`), and the route falls back to the literal string
+    // '[media prompt]' for either case. Without an explicit signal the route
+    // cannot tell "paused, nothing to store" from "unpaused, this really is a
+    // media-only turn" — and the latter must still be stored. See
+    // SessionRoutes.ts's handling of `req.body.paused`.
+    const paused = isSessionPaused(sessionId);
+    const initBody: Record<string, unknown> = {
+      contentSessionId: sessionId,
+      project,
+      platformSource,
+      gitUser,
+      paused,
+    };
+    if (!paused) {
+      initBody.prompt = prompt;
+    }
+
     const initResult = await executeWithWorkerFallback<SessionInitResponse>(
       '/api/sessions/init',
       'POST',
-      {
-        contentSessionId: sessionId,
-        project,
-        prompt,
-        platformSource,
-        gitUser,
-      },
+      initBody,
     );
 
     if (isWorkerFallback(initResult)) {

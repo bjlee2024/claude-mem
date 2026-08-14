@@ -229,6 +229,11 @@ export class PostgresServerSessionsRepository {
    * List events tied to this server_session that do NOT yet have a completed
    * observation_generation_jobs row. Tenant-scoped: rows are filtered by
    * (project_id, team_id) before any join.
+   *
+   * user_prompt events are excluded: they are recorded with generate:false
+   * and never get an observation_generation_jobs row of their own, so
+   * without this exclusion they would qualify as "unprocessed" forever and
+   * feed the session-summary provider prompt verbatim.
    */
   async listUnprocessedEvents(input: {
     serverSessionId: string;
@@ -244,6 +249,7 @@ export class PostgresServerSessionsRepository {
         WHERE e.server_session_id = $1
           AND e.project_id = $2
           AND e.team_id = $3
+          AND e.event_type <> 'user_prompt'
           AND NOT EXISTS (
             SELECT 1 FROM observation_generation_jobs j
             WHERE j.agent_event_id = e.id
