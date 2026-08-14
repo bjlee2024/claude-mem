@@ -232,6 +232,47 @@ describe('ServerSessionRuntimeRepository + Postgres', () => {
     expect(unprocessed.map(e => e.id)).toEqual([eventB.id]);
   });
 
+  // F3: user_prompt events are recorded with generate:false and never get an
+  // observation_generation_jobs row of their own, so without this exclusion
+  // they would qualify as "unprocessed" forever and feed the session-summary
+  // provider prompt verbatim (see ProviderObservationGenerator.ts loadEvents,
+  // the only caller of listUnprocessedEvents).
+  it('listUnprocessedEvents excludes user_prompt events even without a completed job', async () => {
+    const session = await runtime.getActiveSession({
+      teamId,
+      projectId,
+      externalSessionId: 'ext-user-prompt',
+    });
+
+    const promptEvent = await storage.agentEvents.create({
+      projectId,
+      teamId,
+      serverSessionId: session.id,
+      sourceAdapter: 'hook',
+      eventType: 'user_prompt',
+      payload: { prompt: 'do the thing' },
+      occurredAt: new Date(Date.now() - 1000),
+    });
+    const toolEvent = await storage.agentEvents.create({
+      projectId,
+      teamId,
+      serverSessionId: session.id,
+      sourceAdapter: 'api',
+      eventType: 'tool_use',
+      payload: { x: 1 },
+      occurredAt: new Date(),
+    });
+
+    const unprocessed = await runtime.listUnprocessedEvents({
+      teamId,
+      projectId,
+      serverSessionId: session.id,
+    });
+
+    expect(unprocessed.map(e => e.id)).toEqual([toolEvent.id]);
+    expect(unprocessed.some(e => e.id === promptEvent.id)).toBe(false);
+  });
+
   it('cross-tenant getById returns null', async () => {
     const otherTeam = await storage.teams.create({ name: 'other' });
     const otherProject = await storage.projects.create({ teamId: otherTeam.id, name: 'other-p' });

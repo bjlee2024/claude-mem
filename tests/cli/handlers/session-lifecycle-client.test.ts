@@ -72,10 +72,12 @@ mock.module('../../../src/shared/should-track-project.js', () => ({
   shouldTrackProject: () => true,
 }));
 
+// stripMemoryTagsFromPrompt is left as the REAL implementation (not stubbed
+// to identity) so the F2 private-tag-stripping tests below exercise actual
+// behavior, not a pass-through.
 mock.module('../../../src/utils/tag-stripping.js', () => ({
   ...realTagStrippingSnapshot,
   isInternalProtocolPayload: () => false,
-  stripMemoryTagsFromPrompt: (s: string) => s,
 }));
 
 mock.module('../../../src/shared/platform-source.js', () => ({
@@ -349,6 +351,36 @@ describe('sessionInitHandler — client runtime branch', () => {
     } finally {
       resumeSession('session-init-client-1');
     }
+  });
+
+  it('<private> 태그로 감싼 부분은 이벤트 payload에 도달하기 전에 제거된다 (F2)', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    await sessionInitHandler.execute({
+      ...initInput(),
+      prompt: 'rotate this key <private>AKIA1234567890EXAMPLE</private> please',
+    });
+
+    const promptEvents = recordEventCalls.filter(c => c.eventType === 'user_prompt');
+    expect(promptEvents.length).toBe(1);
+    const payload = promptEvents[0].payload as { prompt: string };
+    expect(payload.prompt).not.toContain('AKIA1234567890EXAMPLE');
+    expect(payload.prompt).not.toContain('<private>');
+    expect(payload.prompt).toBe('rotate this key  please');
+  });
+
+  it('프롬프트 전체가 private이면 user_prompt 이벤트를 아예 보내지 않는다 (F2)', async () => {
+    const { sessionInitHandler } = await import('../../../src/cli/handlers/session-init.js');
+
+    const result = await sessionInitHandler.execute({
+      ...initInput(),
+      prompt: '<private>AKIA1234567890EXAMPLE rotate this</private>',
+    });
+
+    expect(recordEventCalls.filter(c => c.eventType === 'user_prompt').length).toBe(0);
+    // Session creation is still unconditional even when the whole prompt is private.
+    expect(startSessionCalls.length).toBe(1);
+    expect(result.continue).toBe(true);
   });
 });
 
