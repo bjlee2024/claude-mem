@@ -10,11 +10,13 @@ import * as realRuntimeSelector from '../../../src/services/hooks/runtime-select
 import * as realShouldTrack from '../../../src/shared/should-track-project.js';
 import * as realPlatformSource from '../../../src/shared/platform-source.js';
 import * as realProjectName from '../../../src/utils/project-name.js';
+import * as realHookSettings from '../../../src/shared/hook-settings.js';
 
 const realRuntimeSelectorSnapshot = { ...realRuntimeSelector };
 const realShouldTrackSnapshot = { ...realShouldTrack };
 const realPlatformSourceSnapshot = { ...realPlatformSource };
 const realProjectNameSnapshot = { ...realProjectName };
+const realHookSettingsSnapshot = { ...realHookSettings };
 
 mock.module('../../../src/shared/hook-settings.js', () => ({
   loadFromFileOnce: () => ({
@@ -93,6 +95,7 @@ afterAll(() => {
   mock.module('../../../src/shared/should-track-project.js', () => realShouldTrackSnapshot);
   mock.module('../../../src/shared/platform-source.js', () => realPlatformSourceSnapshot);
   mock.module('../../../src/utils/project-name.js', () => realProjectNameSnapshot);
+  mock.module('../../../src/shared/hook-settings.js', () => realHookSettingsSnapshot);
 });
 
 describe('sessionInitHandler — server-beta runtime branch', () => {

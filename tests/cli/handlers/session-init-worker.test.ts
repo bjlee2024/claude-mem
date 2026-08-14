@@ -105,6 +105,7 @@ describe('sessionInitHandler — worker (default) runtime branch', () => {
     expect(initCall).toBeDefined();
     const body = initCall!.body as Record<string, unknown>;
     expect(body.prompt).toBe('my real secret prompt text');
+    expect(body.paused).toBe(false);
     expect(result.continue).toBe(true);
   });
 
@@ -123,6 +124,10 @@ describe('sessionInitHandler — worker (default) runtime branch', () => {
       // The real prompt text must never be put on the wire while paused.
       expect(body.prompt).toBeUndefined();
       expect(JSON.stringify(body)).not.toContain('my real secret prompt text');
+      // Explicit signal, not inferred from the missing `prompt` — this is
+      // what lets the route tell a paused turn apart from a genuine
+      // media-only prompt (see SessionRoutes.ts).
+      expect(body.paused).toBe(true);
 
       // Control: session creation is unconditional. The handler still reads
       // sessionDbId/promptNumber back from the (mocked) response, proving the

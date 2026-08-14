@@ -173,18 +173,22 @@ export const sessionInitHandler: EventHandler = {
     // sessionDbId/promptNumber/context injection below) and persists the
     // prompt text into user_prompts (SessionRoutes.ts saveUserPrompt) — there
     // is no separate event to gate the way client/server-beta gate
-    // recordEvent above. While paused, omit `prompt` from the request instead
-    // of skipping the call: the route already treats a missing prompt as
-    // '[media prompt]' (see the undefined/empty-prompt fallback below), so
-    // this reuses an existing, well-tested path rather than adding a new
-    // paused-flag branch to SessionRoutes.ts, and it never puts the real
-    // prompt text on the wire in the first place.
+    // recordEvent above. While paused, omit `prompt` from the request so the
+    // real text is never put on the wire, AND send an explicit `paused: true`
+    // flag. The flag is required: an omitted `prompt` is indistinguishable on
+    // the route side from a genuine media-only prompt (both arrive as
+    // `undefined`), and the route falls back to the literal string
+    // '[media prompt]' for either case. Without an explicit signal the route
+    // cannot tell "paused, nothing to store" from "unpaused, this really is a
+    // media-only turn" — and the latter must still be stored. See
+    // SessionRoutes.ts's handling of `req.body.paused`.
     const paused = isSessionPaused(sessionId);
     const initBody: Record<string, unknown> = {
       contentSessionId: sessionId,
       project,
       platformSource,
       gitUser,
+      paused,
     };
     if (!paused) {
       initBody.prompt = prompt;

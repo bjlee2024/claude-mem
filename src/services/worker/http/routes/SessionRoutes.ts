@@ -189,6 +189,12 @@ export class SessionRoutes extends BaseRouteHandler {
     // schema must tolerate both null and undefined, or session-init fails with
     // a 400 and no sdk_sessions row is ever created.
     gitUser: z.string().nullish(),
+    // Explicit paused signal from the hook (session-init.ts), sent alongside an
+    // omitted `prompt`. An omitted `prompt` alone is ambiguous — it is
+    // indistinguishable from a genuine media-only prompt, which must still be
+    // stored. `paused: true` disambiguates: skip persistence, not session
+    // creation. Absent/false means "not paused" (normal, unpaused request).
+    paused: z.boolean().optional(),
   }).passthrough();
 
   private static readonly observationsByClaudeIdSchema = z.object({
@@ -325,6 +331,11 @@ export class SessionRoutes extends BaseRouteHandler {
     const gitUser = typeof req.body.gitUser === 'string' && req.body.gitUser.trim() !== ''
       ? req.body.gitUser
       : null;
+    // Explicit signal from the hook (session-init.ts), not inferred from the
+    // absence of `prompt` — an omitted prompt is ambiguous with a genuine
+    // media-only prompt, which must still be persisted. See the schema
+    // comment on `paused` above.
+    const paused = req.body.paused === true;
 
     if (rawPrompt && isInternalProtocolPayload(rawPrompt)) {
       logger.debug('HTTP', 'session-init: skipping internal protocol payload before session creation', { contentSessionId });
@@ -379,77 +390,94 @@ export class SessionRoutes extends BaseRouteHandler {
 
     const cleanedPrompt = stripMemoryTagsFromPrompt(prompt);
 
-    if (!cleanedPrompt || cleanedPrompt.trim() === '') {
-      logger.debug('HOOK', 'Session init - prompt entirely private', {
-        sessionId: sessionDbId,
-        promptNumber,
-        originalLength: prompt.length
-      });
+    // A paused turn never reaches storage/broadcast/Chroma/generator — see the
+    // `paused` block below — so the private check (which only guards what
+    // gets stored) is skipped for it too. Session creation above already
+    // happened unconditionally.
+    if (!paused) {
+      if (!cleanedPrompt || cleanedPrompt.trim() === '') {
+        logger.debug('HOOK', 'Session init - prompt entirely private', {
+          sessionId: sessionDbId,
+          promptNumber,
+          originalLength: prompt.length
+        });
 
-      res.json({
-        sessionDbId,
-        promptNumber,
-        skipped: true,
-        reason: 'private'
-      });
-      return;
+        res.json({
+          sessionDbId,
+          promptNumber,
+          skipped: true,
+          reason: 'private'
+        });
+        return;
+      }
+
+      store.saveUserPrompt(contentSessionId, promptNumber, cleanedPrompt);
     }
-
-    store.saveUserPrompt(contentSessionId, promptNumber, cleanedPrompt);
 
     const contextInjected = this.sessionManager.getSession(sessionDbId) !== undefined;
 
     logger.debug('SESSION', 'User prompt saved', {
       sessionId: sessionDbId,
       promptNumber,
+      paused,
       contextInjected
     });
 
     if (platformSource !== 'cursor') {
       const sdkPrompt = cleanedPrompt.startsWith('/') ? cleanedPrompt.substring(1) : cleanedPrompt;
+      // Session creation stays unconditional even while paused: it is what
+      // lets sessionDbId/promptNumber/contextInjected keep working, and it's
+      // what SessionManager needs for the *next* (unpaused) turn to have
+      // continuity. It does not touch user_prompts or the viewer feed.
       const session = this.sessionManager.initializeSession(sessionDbId, sdkPrompt, promptNumber);
 
-      const latestPrompt = store.getLatestUserPrompt(session.contentSessionId);
+      if (!paused) {
+        const latestPrompt = store.getLatestUserPrompt(session.contentSessionId);
 
-      if (latestPrompt) {
-        this.eventBroadcaster.broadcastNewPrompt({
-          id: latestPrompt.id,
-          content_session_id: latestPrompt.content_session_id,
-          project: latestPrompt.project,
-          platform_source: latestPrompt.platform_source,
-          prompt_number: latestPrompt.prompt_number,
-          prompt_text: latestPrompt.prompt_text,
-          created_at_epoch: latestPrompt.created_at_epoch
-        });
-
-        const chromaStart = Date.now();
-        const promptText = latestPrompt.prompt_text;
-        this.dbManager.getChromaSync()?.syncUserPrompt(
-          latestPrompt.id,
-          latestPrompt.memory_session_id,
-          latestPrompt.project,
-          promptText,
-          latestPrompt.prompt_number,
-          latestPrompt.created_at_epoch
-        ).then(() => {
-          const chromaDuration = Date.now() - chromaStart;
-          const truncatedPrompt = promptText.length > 60
-            ? promptText.substring(0, 60) + '...'
-            : promptText;
-          logger.debug('CHROMA', 'User prompt synced', {
-            promptId: latestPrompt.id,
-            duration: `${chromaDuration}ms`,
-            prompt: truncatedPrompt
+        if (latestPrompt) {
+          this.eventBroadcaster.broadcastNewPrompt({
+            id: latestPrompt.id,
+            content_session_id: latestPrompt.content_session_id,
+            project: latestPrompt.project,
+            platform_source: latestPrompt.platform_source,
+            prompt_number: latestPrompt.prompt_number,
+            prompt_text: latestPrompt.prompt_text,
+            created_at_epoch: latestPrompt.created_at_epoch
           });
-        }).catch((error) => {
-          logger.error('CHROMA', 'User prompt sync failed, continuing without vector search', {
-            promptId: latestPrompt.id,
-            prompt: promptText.length > 60 ? promptText.substring(0, 60) + '...' : promptText
-          }, error);
-        });
-      }
 
-      await this.ensureGeneratorRunning(sessionDbId, 'init');
+          const chromaStart = Date.now();
+          const promptText = latestPrompt.prompt_text;
+          this.dbManager.getChromaSync()?.syncUserPrompt(
+            latestPrompt.id,
+            latestPrompt.memory_session_id,
+            latestPrompt.project,
+            promptText,
+            latestPrompt.prompt_number,
+            latestPrompt.created_at_epoch
+          ).then(() => {
+            const chromaDuration = Date.now() - chromaStart;
+            const truncatedPrompt = promptText.length > 60
+              ? promptText.substring(0, 60) + '...'
+              : promptText;
+            logger.debug('CHROMA', 'User prompt synced', {
+              promptId: latestPrompt.id,
+              duration: `${chromaDuration}ms`,
+              prompt: truncatedPrompt
+            });
+          }).catch((error) => {
+            logger.error('CHROMA', 'User prompt sync failed, continuing without vector search', {
+              promptId: latestPrompt.id,
+              prompt: promptText.length > 60 ? promptText.substring(0, 60) + '...' : promptText
+            }, error);
+          });
+        }
+
+        // Gated with the block above: a paused turn has nothing new to
+        // generate observations from, and must not queue an LLM job — the
+        // same guarantee `generate: false` gives the client/server-beta
+        // runtimes.
+        await this.ensureGeneratorRunning(sessionDbId, 'init');
+      }
 
       this.eventBroadcaster.broadcastSessionStarted(sessionDbId, session.project);
     } else {
