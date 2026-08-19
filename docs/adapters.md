@@ -9,4 +9,5 @@ Generic agent examples live in `src/adapters/generic-rest/examples.ts` for Codex
 Grok does **not** use the unified `worker-service.cjs hook <platform>` path. Installer
 `GrokHooksInstaller` writes `~/.grok/hooks/claude-mem.json`, which runs
 `plugin/scripts/grok-client.py` against `CLAUDE_MEM_SERVER_BETA_URL` directly
-(`platformSource: "grok"`). See `docs/public/grok/setup.mdx`.
+(`platformSource: "grok"` on sessions and events, including `user_prompt`).
+See `docs/public/grok/setup.mdx`.

@@ -80,7 +80,13 @@ export function getVersionCheckAbsolutePath(): string | null {
 
 /** Absolute path to the Grok client-write hook (`grok-client.py`), or null. */
 export function getGrokClientAbsolutePath(): string | null {
-  return resolvePluginScript('grok-client.py');
+  // Prefer the script shipped with this checkout / npm package over a
+  // previously copied marketplace tree. Client-mode reinstall must pick up
+  // grok-client.py from the installer being run, not a stale marketplace copy.
+  return firstExisting([
+    path.join(process.cwd(), 'plugin', 'scripts', 'grok-client.py'),
+    resolvePluginScript('grok-client.py') ?? '',
+  ]);
 }
 
 /**

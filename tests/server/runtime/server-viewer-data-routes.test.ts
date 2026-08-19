@@ -230,6 +230,65 @@ describe('ServerViewerDataRoutes (viewer data API)', () => {
     });
   });
 
+  it('GET /api/prompts lists user_prompt events with grok platform_source', async () => {
+    const sessionId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO server_sessions (id, project_id, team_id, external_session_id, content_session_id, platform_source)
+       VALUES ($1, $2, $3, $4, $4, 'grok')`,
+      [sessionId, projectId, teamId, 'grok-session-1'],
+    );
+    await client.query(
+      `INSERT INTO agent_events (
+         id, project_id, team_id, server_session_id, source_adapter, idempotency_key,
+         event_type, platform_source, payload, occurred_at
+       ) VALUES ($1, $2, $3, $4, 'hook', $5, 'user_prompt', 'grok', $6, now())`,
+      [eventId, projectId, teamId, sessionId, `idem-${eventId}`, JSON.stringify({ prompt: 'list grok history' })],
+    );
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/prompts`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].prompt_text).toBe('list grok history');
+    expect(body.items[0].platform_source).toBe('grok');
+    expect(body.items[0].project).toBe('proj-a');
+  });
+
+  it('GET /api/observations uses session platform_source, not generation provider', async () => {
+    const sessionId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO server_sessions (id, project_id, team_id, platform_source)
+       VALUES ($1, $2, $3, 'grok')`,
+      [sessionId, projectId, teamId],
+    );
+    await client.query(
+      `INSERT INTO observations (id, project_id, team_id, server_session_id, kind, content, metadata, created_at)
+       VALUES ($1, $2, $3, $4, 'observation', 'from grok', $5, now() + interval '10 seconds')`,
+      [
+        crypto.randomUUID(), projectId, teamId, sessionId,
+        JSON.stringify({ title: 'Grok row', provider: 'openrouter' }),
+      ],
+    );
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/observations?limit=1&offset=0`);
+    const body = await res.json() as { items: Array<{ platform_source: string; title: string }> };
+    expect(body.items[0].title).toBe('Grok row');
+    expect(body.items[0].platform_source).toBe('grok');
+  });
+
+  it('GET /api/projects includes grok in sources when a grok session exists', async () => {
+    await client.query(
+      `INSERT INTO server_sessions (id, project_id, team_id, platform_source)
+       VALUES ($1, $2, $3, 'grok')`,
+      [crypto.randomUUID(), projectId, teamId],
+    );
+    const res = await fetch(`http://127.0.0.1:${port}/api/projects`);
+    const body = await res.json() as { sources: string[]; projectsBySource: Record<string, string[]> };
+    expect(body.sources).toContain('grok');
+    expect(body.projectsBySource.grok).toEqual(['proj-a']);
+  });
+
   it('GET /api/settings returns {} (viewer applies defaults)', async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/settings`);
     expect(res.status).toBe(200);

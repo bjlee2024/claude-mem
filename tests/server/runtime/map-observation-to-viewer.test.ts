@@ -37,6 +37,24 @@ describe('mapObservationToViewer', () => {
     expect(v.prompt_number).toBeNull();
   });
 
+  it('prefers session platform_source over generation provider', () => {
+    const v = mapObservationToViewer({
+      ...baseRow,
+      session_platform_source: 'grok',
+      metadata: { ...baseRow.metadata, provider: 'openrouter' },
+    });
+    expect(v.platform_source).toBe('grok');
+  });
+
+  it('ignores non-agent provider labels when no session source is present', () => {
+    const v = mapObservationToViewer({
+      ...baseRow,
+      session_platform_source: null,
+      metadata: { provider: 'openrouter' },
+    });
+    expect(v.platform_source).toBe('claude');
+  });
+
   it('handles missing metadata fields and null session/project as safe defaults', () => {
     const v = mapObservationToViewer({
       id: 'o2', server_session_id: null, project_name: null,
