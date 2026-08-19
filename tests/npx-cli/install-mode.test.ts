@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'bun:test';
-import { resolveInstallMode } from '../../src/npx-cli/commands/install.js';
+import { resolveInstallMode, resolveSelectedIdes } from '../../src/npx-cli/commands/install.js';
 import { encodeEnrollment } from '../../src/services/hooks/enrollment.js';
 
 describe('resolveInstallMode', () => {
@@ -26,5 +26,51 @@ describe('resolveInstallMode', () => {
   it('no mode preserves legacy runtime selection', () => {
     expect(resolveInstallMode({ runtime: 'worker' }).runtime).toBe('worker');
     expect(resolveInstallMode({}).runtime).toBe('worker');
+  });
+});
+
+const detected = [
+  { id: 'claude-code', detected: true, supported: true },
+  { id: 'grok', detected: true, supported: true },
+  { id: 'cursor', detected: false, supported: true },
+];
+
+describe('resolveSelectedIdes', () => {
+  it('client non-TTY install includes detected grok, not just claude-code', () => {
+    expect(resolveSelectedIdes({
+      skipIdeHooks: false,
+      isClientMode: true,
+      isInteractive: false,
+      detected,
+    })).toEqual(['claude-code', 'grok']);
+  });
+
+  it('client interactive install adds grok when detected even if picker omitted it', () => {
+    expect(resolveSelectedIdes({
+      skipIdeHooks: false,
+      isClientMode: true,
+      isInteractive: true,
+      promptedIdes: ['claude-code'],
+      detected,
+    })).toEqual(['claude-code', 'grok']);
+  });
+
+  it('explicit --ide is not expanded', () => {
+    expect(resolveSelectedIdes({
+      skipIdeHooks: false,
+      explicitIde: 'claude-code',
+      isClientMode: true,
+      isInteractive: false,
+      detected,
+    })).toEqual(['claude-code']);
+  });
+
+  it('worker non-TTY default stays claude-code only', () => {
+    expect(resolveSelectedIdes({
+      skipIdeHooks: false,
+      isClientMode: false,
+      isInteractive: false,
+      detected,
+    })).toEqual(['claude-code']);
   });
 });

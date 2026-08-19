@@ -117,14 +117,33 @@ def handle(event: dict[str, Any], cfg: dict[str, str]) -> None:
     if not project_id:
         return
 
-    if hook_event in ("session_start", "user_prompt_submit"):
-        prompt = (
-            event.get("prompt")
-            or event.get("userPrompt")
-            or event.get("message")
-            or event.get("query")
-        )
-        start_session(cfg, project_id, session_id, cwd, prompt)
+    if hook_event == "session_start":
+        start_session(cfg, project_id, session_id, cwd, None)
+        return
+
+    if hook_event == "user_prompt_submit":
+        prompt = extract_user_prompt(event, session_id, cwd)
+        start_session(cfg, project_id, session_id, cwd, prompt or None)
+        if prompt:
+            source_event_id = (
+                event.get("promptId")
+                or event.get("prompt_id")
+                or str(uuid.uuid4())
+            )
+            record_event(
+                cfg,
+                project_id=project_id,
+                session_id=session_id,
+                event_type="user_prompt",
+                payload={
+                    "prompt": sanitize(prompt, MAX_FIELD_CHARS),
+                    "promptId": event.get("promptId") or event.get("prompt_id"),
+                    "cwd": cwd,
+                    "platformSource": PLATFORM_SOURCE,
+                },
+                generate=False,
+                source_event_id=str(source_event_id),
+            )
         return
 
     if hook_event == "post_tool_use":
@@ -198,6 +217,8 @@ def load_settings() -> dict[str, str] | None:
         data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
     except Exception:
         return None
+    if isinstance(data.get("env"), dict):
+        data = data["env"]
     url = (data.get("CLAUDE_MEM_SERVER_BETA_URL") or "").rstrip("/")
     key = data.get("CLAUDE_MEM_SERVER_BETA_API_KEY") or ""
     if not url or not key:
@@ -330,17 +351,21 @@ def record_event(
     session_id: str,
     event_type: str,
     payload: dict[str, Any],
+    generate: bool = True,
+    source_event_id: str | None = None,
 ) -> None:
     body = {
         "projectId": project_id,
         "contentSessionId": session_id,
         "sourceType": "hook",
         "eventType": event_type,
+        "platformSource": PLATFORM_SOURCE,
         "occurredAtEpoch": int(time.time() * 1000),
-        "sourceEventId": str(uuid.uuid4()),
+        "sourceEventId": source_event_id or str(uuid.uuid4()),
         "payload": payload,
     }
-    api_post(cfg, "/v1/events", body)
+    path = "/v1/events" if generate else "/v1/events?generate=false"
+    api_post(cfg, path, body)
 
 
 def end_session(cfg: dict[str, str], server_session_id: str) -> None:
@@ -366,6 +391,46 @@ def sanitize(value: Any, max_chars: int) -> Any:
         except Exception:
             return text
     return text
+
+
+USER_QUERY_RE = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
+
+
+def unwrap_user_query(text: str) -> str:
+    match = USER_QUERY_RE.search(text)
+    return match.group(1).strip() if match else text.strip()
+
+
+def extract_user_prompt(event: dict[str, Any], session_id: str, cwd: str) -> str:
+    for key in ("prompt", "userPrompt", "user_prompt", "message", "query"):
+        value = event.get(key)
+        if isinstance(value, str) and value.strip():
+            return unwrap_user_query(value)
+
+    path = find_chat_history(session_id, cwd)
+    if not path:
+        return ""
+    last = ""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") != "user":
+                    continue
+                if obj.get("synthetic_reason"):
+                    continue
+                text = unwrap_user_query(content_to_text(obj.get("content")))
+                if text:
+                    last = text
+    except Exception:
+        return last
+    return last
 
 
 def extract_last_assistant_message(
@@ -436,12 +501,13 @@ def find_chat_history(session_id: str, cwd: str) -> Path | None:
     from urllib.parse import quote
 
     encoded = quote(cwd, safe="")
-    candidate = SESSIONS_ROOT / encoded / session_id / "chat_history.jsonl"
+    root = Path(SESSIONS_ROOT)
+    candidate = root / encoded / session_id / "chat_history.jsonl"
     if candidate.is_file():
         return candidate
     # Search by session id (cwd encoding may differ)
     try:
-        for p in SESSIONS_ROOT.glob(f"*/{session_id}/chat_history.jsonl"):
+        for p in root.glob(f"*/{session_id}/chat_history.jsonl"):
             return p
     except Exception:
         pass

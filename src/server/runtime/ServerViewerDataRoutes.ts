@@ -49,6 +49,36 @@ export interface ViewerObservationRow {
   content: string;
   metadata: unknown;
   created_at: Date | string;
+  session_platform_source?: string | null;
+}
+
+const AGENT_PLATFORM_SOURCES = new Set([
+  'claude',
+  'grok',
+  'cursor',
+  'codex',
+  'gemini',
+  'opencode',
+  'windsurf',
+  'copilot',
+]);
+
+export function resolveViewerPlatformSource(
+  sessionPlatformSource: string | null | undefined,
+  metadata: Record<string, unknown>,
+): string {
+  if (typeof sessionPlatformSource === 'string' && sessionPlatformSource.length > 0) {
+    return sessionPlatformSource;
+  }
+  const fromMeta = metadata.platformSource ?? metadata.platform_source;
+  if (typeof fromMeta === 'string' && fromMeta.length > 0) {
+    return fromMeta;
+  }
+  const provider = metadata.provider;
+  if (typeof provider === 'string' && AGENT_PLATFORM_SOURCES.has(provider)) {
+    return provider;
+  }
+  return 'claude';
 }
 
 // Row shape for the /api/prompts query. LEFT-joined session/project fields can
@@ -97,7 +127,7 @@ export function mapObservationToViewer(row: ViewerObservationRow): ViewerObserva
     memory_session_id: row.server_session_id ?? '',
     project: row.project_name ?? '',
     merged_into_project: null,
-    platform_source: typeof meta.provider === 'string' ? meta.provider : 'claude',
+    platform_source: resolveViewerPlatformSource(row.session_platform_source, meta),
     type: row.kind,
     title: asStringOrNull(meta.title),
     subtitle: asStringOrNull(meta.subtitle),
@@ -144,7 +174,7 @@ function mapRowToObservation(row: ViewerObservationRow, idx: number, project: st
   return {
     id: idx,
     memory_session_id: typeof row.server_session_id === 'string' ? row.server_session_id : '',
-    platform_source: typeof meta.provider === 'string' ? meta.provider : undefined,
+    platform_source: resolveViewerPlatformSource(row.session_platform_source, meta),
     type: typeof meta.type === 'string' ? meta.type : (row.kind || 'observation'),
     title: typeof meta.title === 'string' ? meta.title : null,
     // Not folded into title — HumanFormatter/AgentFormatter join git_user and
@@ -228,9 +258,10 @@ export class ServerViewerDataRoutes implements RouteHandler {
       }
       const result = await this.pool.query<ViewerObservationRow>(
         `SELECT o.id, o.server_session_id, p.name AS project_name, o.kind, o.content,
-                o.metadata, o.created_at
+                o.metadata, o.created_at, ss.platform_source AS session_platform_source
            FROM observations o
            LEFT JOIN projects p ON o.project_id = p.id
+           LEFT JOIN server_sessions ss ON ss.id = o.server_session_id
           WHERE p.name = $1 AND o.kind <> 'summary'
           ORDER BY o.created_at DESC
           LIMIT 50`,
@@ -253,9 +284,10 @@ export class ServerViewerDataRoutes implements RouteHandler {
       const params: unknown[] = project ? [limit + 1, offset, project] : [limit + 1, offset];
       const result = await this.pool.query<ViewerObservationRow>(
         `SELECT o.id, o.server_session_id, p.name AS project_name, o.kind, o.content,
-                o.metadata, o.created_at
+                o.metadata, o.created_at, ss.platform_source AS session_platform_source
            FROM observations o
            LEFT JOIN projects p ON o.project_id = p.id
+           LEFT JOIN server_sessions ss ON ss.id = o.server_session_id
           WHERE 1=1 ${kindFilter} ${projectFilter}
           ORDER BY o.created_at DESC
           LIMIT $1 OFFSET $2`,
@@ -284,7 +316,7 @@ export class ServerViewerDataRoutes implements RouteHandler {
         `SELECT e.id,
                 s.content_session_id,
                 p.name AS project_name,
-                s.platform_source,
+                COALESCE(NULLIF(e.platform_source, ''), NULLIF(s.platform_source, ''), 'claude') AS platform_source,
                 e.payload->>'prompt' AS prompt_text,
                 e.occurred_at,
                 row_number() OVER (
@@ -310,11 +342,26 @@ export class ServerViewerDataRoutes implements RouteHandler {
 
   private async handleProjects(_req: Request, res: Response): Promise<void> {
     try {
-      const result = await this.pool.query<{ name: string }>(
+      const names = await this.pool.query<{ name: string }>(
         'SELECT name FROM projects ORDER BY name ASC'
       );
-      const projects = result.rows.map(r => r.name);
-      res.json({ projects, sources: ['claude'], projectsBySource: { claude: projects } });
+      const projects = names.rows.map(r => r.name);
+      const sourced = await this.pool.query<{ name: string; source: string }>(
+        `SELECT p.name,
+                COALESCE(NULLIF(s.platform_source, ''), 'claude') AS source
+           FROM projects p
+           LEFT JOIN server_sessions s ON s.project_id = p.id
+          GROUP BY p.name, COALESCE(NULLIF(s.platform_source, ''), 'claude')
+          ORDER BY p.name ASC`
+      );
+      const projectsBySource: Record<string, string[]> = {};
+      for (const row of sourced.rows) {
+        const list = projectsBySource[row.source] ?? [];
+        if (!list.includes(row.name)) list.push(row.name);
+        projectsBySource[row.source] = list;
+      }
+      const sources = Object.keys(projectsBySource);
+      res.json({ projects, sources, projectsBySource });
     } catch (err) {
       logger.error('SYSTEM', 'viewer /api/projects failed', { error: String(err) });
       res.status(500).json({ error: 'InternalError', message: 'Failed to list projects' });

@@ -41,13 +41,17 @@ chmod 600 ~/.claude-mem/settings.json
 
 ### 2단계: Grok 훅 설치
 
+client 모드로 설치하면 Grok이 감지된 경우 훅이 **자동으로** 설치·갱신됩니다
+(`~/.grok/hooks/claude-mem.json` + `bin/claude-mem-client.py`).
+
 ```bash
-npx @bjlee2024/claude-mem install --ide grok
+npx @bjlee2024/claude-mem install --mode client --enroll <token>
 ```
 
-또는:
+Grok만 따로 설치하거나 훅만 갱신하려면:
 
 ```bash
+npx @bjlee2024/claude-mem install --mode client --enroll <token> --ide grok
 claude-mem grok install
 claude-mem grok status
 ```
@@ -69,12 +73,15 @@ Hooks 탭에 `claude-mem` 이벤트가 보이면 준비된 것입니다.
 
 | Grok 이벤트 | server-beta |
 |-------------|--------------|
-| SessionStart / UserPromptSubmit | `POST /v1/sessions/start` |
-| PostToolUse (`search_replace`, `write`, `run_terminal_command` 등) | `POST /v1/events` (`tool_use`) |
+| SessionStart | `POST /v1/sessions/start` |
+| UserPromptSubmit | 세션 start + `POST /v1/events` (`user_prompt`, `generate=false`) |
+| PostToolUse (`search_replace`, `write`, `run_terminal_command` 등) | `POST /v1/events` (`tool_use`, `platformSource: grok`) |
 | Stop | `assistant_message` + session end |
 | SessionEnd | session end |
 
-- **쓰기 도구만** 기록합니다 (read_file / grep / list_dir 등은 스킵).
+- **쓰기 도구만** 관찰로 기록합니다 (read_file / grep / list_dir 등은 스킵).
+- **UserPromptSubmit** 마다 `user_prompt` 이벤트를 남깁니다. Grok 훅 payload에 질문이 없으면 `chat_history.jsonl`에서 마지막 사용자 메시지를 읽습니다.
+- 이벤트와 세션의 `platformSource`는 `grok`입니다. 뷰어 배지/소스 필터가 Claude와 구분됩니다.
 - 훅은 **fail-open** 입니다. 네트워크·설정 오류가 있어도 Grok 도구 호출을 막지 않습니다.
 - payload 내 API 키·토큰 패턴은 마스킹되고 긴 본문은 truncate 됩니다.
 - 프로젝트 이름은 git `origin`의 `owner/repo` (기존 claude-mem과 동일).

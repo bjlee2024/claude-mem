@@ -95,6 +95,7 @@ describe('install-paths Grok helpers', () => {
     const client = paths.getGrokClientAbsolutePath();
     expect(client).toBeTruthy();
     expect(client!.endsWith('grok-client.py')).toBe(true);
+    expect(client).toContain(`${join('plugin', 'scripts', 'grok-client.py')}`);
   });
 });
 

@@ -98,7 +98,10 @@ export function buildGrokHooksConfig(command: string = RELATIVE_CLIENT_COMMAND):
 function readSettingsHint(): { url?: string; hasKey: boolean; runtime?: string } {
   try {
     if (!existsSync(USER_SETTINGS_PATH)) return { hasKey: false };
-    const data = JSON.parse(readFileSync(USER_SETTINGS_PATH, 'utf-8')) as Record<string, unknown>;
+    const parsed = JSON.parse(readFileSync(USER_SETTINGS_PATH, 'utf-8')) as Record<string, unknown>;
+    const data = (parsed.env && typeof parsed.env === 'object'
+      ? parsed.env
+      : parsed) as Record<string, unknown>;
     return {
       url: typeof data.CLAUDE_MEM_SERVER_BETA_URL === 'string' ? data.CLAUDE_MEM_SERVER_BETA_URL : undefined,
       hasKey: Boolean(data.CLAUDE_MEM_SERVER_BETA_API_KEY),
@@ -177,8 +180,9 @@ Hooks installed to: ${managed}
 Mode: server-beta client write (no local worker required)
 
 Events:
-  SessionStart / UserPromptSubmit  → POST /v1/sessions/start
-  PostToolUse (write tools only)   → POST /v1/events (tool_use)
+  SessionStart                     → POST /v1/sessions/start
+  UserPromptSubmit                 → session start + POST /v1/events (user_prompt)
+  PostToolUse (write tools only)   → POST /v1/events (tool_use, platformSource=grok)
   Stop                             → assistant_message + session end
   SessionEnd                       → session end
 

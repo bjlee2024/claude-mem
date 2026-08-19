@@ -543,7 +543,7 @@ async function promptForIDESelection(): Promise<string[]> {
   const result = await p.multiselect({
     message: 'Which IDEs do you use?',
     options,
-    initialValues: [],
+    initialValues: detected.filter((ide) => ide.supported).map((ide) => ide.id),
     required: true,
   });
 
@@ -1259,6 +1259,50 @@ export function resolveInstallMode(args: InstallModeArgs): ResolvedInstall {
   };
 }
 
+export interface IdeSelectionInput {
+  skipIdeHooks: boolean;
+  explicitIde?: string;
+  isClientMode: boolean;
+  isInteractive: boolean;
+  promptedIdes?: string[];
+  detected: Array<{ id: string; detected: boolean; supported: boolean }>;
+}
+
+/**
+ * Pick which IDE integrations to install.
+ *
+ * Client mode is a thin write-path against server-beta. Grok's only
+ * integration is that write-path, so a client install always includes Grok
+ * hooks when Grok is detected — even if the interactive picker left it
+ * unchecked, or a non-TTY install would otherwise default to Claude Code
+ * only. `--ide` still wins and is not expanded.
+ */
+export function resolveSelectedIdes(input: IdeSelectionInput): string[] {
+  if (input.skipIdeHooks) return [];
+  if (input.explicitIde) return [input.explicitIde];
+
+  const grokDetected = input.detected.some((ide) => ide.id === 'grok' && ide.detected && ide.supported);
+  const detectedIds = input.detected
+    .filter((ide) => ide.detected && ide.supported)
+    .map((ide) => ide.id);
+
+  if (input.isInteractive) {
+    const selected = [...(input.promptedIdes ?? [])];
+    if (input.isClientMode && grokDetected && !selected.includes('grok')) {
+      selected.push('grok');
+    }
+    return selected;
+  }
+
+  if (input.isClientMode) {
+    const selected = detectedIds.length > 0 ? [...detectedIds] : ['claude-code'];
+    if (grokDetected && !selected.includes('grok')) selected.push('grok');
+    return selected;
+  }
+
+  return ['claude-code'];
+}
+
 export interface InstallOptions {
   ide?: string;
   provider?: 'claude' | 'gemini' | 'openrouter';
@@ -1372,12 +1416,12 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
   // IDE hooks are installed on the server box.
   const skipIdeHooks = options.mode === 'server' && !resolved.withLocalClient;
 
+  const allIDEs = detectInstalledIDEs();
   let selectedIDEs: string[];
   if (skipIdeHooks) {
     selectedIDEs = [];
   } else if (options.ide) {
     selectedIDEs = [options.ide];
-    const allIDEs = detectInstalledIDEs();
     const match = allIDEs.find((i) => i.id === options.ide);
     if (match && !match.supported) {
       log.error(`Support for ${match.label} coming soon.`);
@@ -1389,9 +1433,24 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
       process.exit(1);
     }
   } else if (process.stdin.isTTY) {
-    selectedIDEs = await promptForIDESelection();
+    const prompted = await promptForIDESelection();
+    selectedIDEs = resolveSelectedIdes({
+      skipIdeHooks: false,
+      isClientMode,
+      isInteractive: true,
+      promptedIdes: prompted,
+      detected: allIDEs,
+    });
+    if (isClientMode && selectedIDEs.includes('grok') && !prompted.includes('grok')) {
+      log.info('Client mode: installing Grok hooks (Grok detected).');
+    }
   } else {
-    selectedIDEs = ['claude-code'];
+    selectedIDEs = resolveSelectedIdes({
+      skipIdeHooks: false,
+      isClientMode,
+      isInteractive: false,
+      detected: allIDEs,
+    });
   }
 
   let selectedRuntime: RuntimeId | 'client';
