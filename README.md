@@ -165,10 +165,10 @@ Restart Claude Code or Gemini CLI. Context from previous sessions will automatic
 npx @bjlee2024/claude-mem install --mode server
 ```
 
-**2. Enroll each device** — on the server (where `CLAUDE_MEM_SERVER_DATABASE_URL` reaches Postgres), mint a one-time token using the address other devices can reach (your tailnet IP, **not** `127.0.0.1`):
+**2. Enroll each device** — on the server (where `CLAUDE_MEM_SERVER_DATABASE_URL` reaches Postgres), mint a one-time token using the address other devices can reach (**not** `127.0.0.1`). Docker-only hosts without `claude-mem` on PATH: use the `.env` + container-IP command in [B2](#b2-enrollment-토큰-발급-서버에서).
 
 ```bash
-npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+npx @bjlee2024/claude-mem server enroll --url http://10.100.16.183:37700 --label client_name
 ```
 
 **3. On each client device** — redeem the token:
@@ -288,12 +288,7 @@ npx @bjlee2024/claude-mem install --mode server
 npx @bjlee2024/claude-mem server keys rotate
 ```
 
-> **CLI 명령의 데이터베이스 접근.** `server enroll`, `api-key …`, `keys rotate`는 Postgres와 직접 통신하므로, `CLAUDE_MEM_SERVER_DATABASE_URL`이 해석되는 곳에서 실행해야 합니다. Postgres가 호스트로 노출되지 않았다면 컨테이너 주소를 사용하세요:
-> ```bash
-> PG_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' claude-mem-postgres-1)
-> CLAUDE_MEM_SERVER_DATABASE_URL="postgres://claudemem:<pw>@$PG_IP:5432/claudemem" \
->   npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
-> ```
+> **CLI 명령의 데이터베이스 접근.** `server enroll`, `api-key …`, `keys rotate`는 Postgres와 직접 통신하므로, `CLAUDE_MEM_SERVER_DATABASE_URL`이 해석되는 곳에서 실행해야 합니다. Docker 스택만 돌고 호스트에 `claude-mem`이 PATH에 없으면 [B2](#b2-enrollment-토큰-발급-서버에서)의 enroll 명령을 쓰세요.
 
 **A7. Generation 백엔드 선택**
 
@@ -321,10 +316,21 @@ worker에는 정확히 하나의 provider가 필요합니다:
 
 **B2. enrollment 토큰 발급 (서버에서)**
 
-클라이언트가 실제로 접근할 수 있는 주소를 사용해 서버 호스트에서 실행합니다:
+클라이언트가 실제로 접근할 수 있는 주소를 `--url`에 넣습니다 (`localhost` 금지). Docker 스택만 돌고 호스트에 `claude-mem`이 PATH에 없으면, compose 프로젝트 루트(`.env`와 `dist/npx-cli/index.js`가 있는 곳)에서 실행합니다. `.env`의 DSN은 컨테이너 호스트명 `postgres`를 쓰므로, 호스트 CLI가 닿게 컨테이너 IP로 바꿉니다:
 
 ```bash
-npx @bjlee2024/claude-mem server enroll --url http://100.x.y.z:37877 --label laptop
+bash -lc '
+    set -a && source .env && set +a
+    PG_IP=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" claude-mem-postgres-1)
+    export CLAUDE_MEM_SERVER_DATABASE_URL="${CLAUDE_MEM_SERVER_DATABASE_URL/@postgres:/@$PG_IP:}"
+    node dist/npx-cli/index.js server enroll --url http://10.100.16.183:37700 --label client_name
+'
+```
+
+`--url`은 클라이언트가 여는 서버 주소(이 박스 LAN 예: `10.100.16.183:37700`), `--label`은 디바이스 이름입니다. 호스트에 CLI가 있으면 같은 의미로:
+
+```bash
+npx @bjlee2024/claude-mem server enroll --url http://10.100.16.183:37700 --label client_name
 ```
 
 **서버 URL**과 **팀 범위(team-scoped) API 키**(읽기+쓰기, 고정 프로젝트 없음)를 묶은 한 줄 토큰이 출력됩니다. 이 토큰은 **한 번만** 표시되며 서버에는 해시만 저장되므로, 분실하면 다시 enroll 하면 됩니다. 디바이스별로 서로 다른 `--label`을 사용하면 다른 디바이스를 건드리지 않고 특정 디바이스만 폐기할 수 있습니다. 토큰은 비밀번호처럼 취급하세요.

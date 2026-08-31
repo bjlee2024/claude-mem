@@ -170,6 +170,20 @@ claude-mem server enroll --url http://<server-reachable-host>:37877 --label lapt
 # → npx @bjlee2024/claude-mem install --mode client --enroll <token>
 ```
 
+Docker 스택만 돌고 호스트에 `claude-mem`이 PATH에 없으면, compose 프로젝트
+루트(`.env`와 `dist/npx-cli/index.js`가 있는 곳)에서 실행합니다. `.env`의
+DSN은 컨테이너 호스트명 `postgres`를 쓰므로, 호스트 CLI가 닿게 컨테이너
+IP로 바꿉니다:
+
+```sh
+bash -lc '
+    set -a && source .env && set +a
+    PG_IP=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" claude-mem-postgres-1)
+    export CLAUDE_MEM_SERVER_DATABASE_URL="${CLAUDE_MEM_SERVER_DATABASE_URL/@postgres:/@$PG_IP:}"
+    node dist/npx-cli/index.js server enroll --url http://10.100.16.183:37700 --label client_name
+'
+```
+
 …또는 raw 키를 클라이언트에 직접 전달:
 
 ```sh
