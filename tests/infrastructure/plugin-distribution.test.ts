@@ -251,7 +251,7 @@ const RULE_A_EXPECTATIONS: Record<string, Record<string, string>> = {
       trailingCommand: ['node', '"$_P/scripts/version-check.js"'],
       notFoundMessage: 'claude-mem: version-check.js not found',
     }),
-    'SessionStart.0.0': claudeHook(['start'], { trailingJson: { continue: true, suppressOutput: true } }),
+    'SessionStart.0.0': claudeHook(['start']),
     'SessionStart.0.1': claudeHook(['hook', 'claude-code', 'context']),
     'UserPromptSubmit.0.0': claudeHook(['hook', 'claude-code', 'session-init']),
     'PostToolUse.0.0': claudeHook(['hook', 'claude-code', 'observation']),
