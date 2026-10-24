@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.11.1] - 2026-10-24
+
+Fixes a Claude Code startup error from the claude-mem `SessionStart` hook.
+
+## Bug fix
+
+On every Claude Code startup, the first claude-mem `SessionStart` hook failed with:
+
+```
+SessionStart:startup hook error
+Hook output looks like a JSON object but is not valid JSON — JSON Parse error: Unable to parse JSON string.
+```
+
+**Cause.** `worker-service start` already prints its status as JSON (`{"continue":true,"suppressOutput":true,"status":"ready"}`) via `exitWithStatus()`. The hook command then appended `; echo '{"continue":true,"suppressOutput":true}'`, so stdout carried two JSON objects back to back. Claude Code parses hook stdout as a single JSON value and rejected it.
+
+**Fix.** Dropped `trailingJson` from the Claude Code `SessionStart` `start` hook in `scripts/build-hooks.js` and regenerated `plugin/hooks/hooks.json`. The `start` command's own status line is now the only output — the same shape the Codex `start` hook already used. (b30eeba)
+
+Context injection (the second `SessionStart` hook) is unchanged.
+
+## Upgrading
+
+```
+claude plugin update claude-mem@bjlee2024
+```
+
+Then restart Claude Code so it loads the 13.11.1 cache dir.
+
+## Notes
+
+Bundles were rebuilt with esbuild 0.28.2, so `plugin/scripts/*.cjs` and `dist/` diffs are larger than the fix itself. No other source changes are included.
+
 ## [13.10.0] - 2026-08-12
 
 Adds `/claude-mem:pause` and `/claude-mem:resume` — stop recording observations for the current session while past memory keeps being injected.
