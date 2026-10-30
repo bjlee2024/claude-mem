@@ -30,6 +30,7 @@ ${pc.bold('Install Commands')} (no Bun required):
   ${pc.cyan('npx @bjlee2024/claude-mem install --runtime server --server-url <url>')}   Point the server runtime at a specific base URL
   ${pc.cyan('npx @bjlee2024/claude-mem install --mode server')}   Run the backend + provision an enrollment key (takes precedence over --runtime)
   ${pc.cyan('npx @bjlee2024/claude-mem install --mode client --enroll <token>')}   Thin client install pointing at a remote server (no local worker/SQLite/Chroma)
+  ${pc.cyan('npx @bjlee2024/claude-mem install --mode client --server-url <url> --join <secret>')}   Client install that self-enrolls with the team join secret (label defaults to user@host)
   ${pc.cyan('npx @bjlee2024/claude-mem install --mode client --server-url <url> --token <key>')}   Client install with explicit creds
   ${pc.cyan('npx @bjlee2024/claude-mem repair')}                Repair runtime (re-runs Bun/uv setup and bun install in plugin cache)
   ${pc.cyan('npx @bjlee2024/claude-mem update')}               Update to latest version
@@ -118,6 +119,8 @@ function parseInstallOptions(argv: string[]): InstallOptions {
     mode: mode as InstallOptions['mode'],
     enroll: readFlag(argv, '--enroll'),
     token: readFlag(argv, '--token'),
+    join: readFlag(argv, '--join') ?? process.env.CLAUDE_MEM_ENROLL_SECRET,
+    label: readFlag(argv, '--label'),
     withLocalClient,
   };
 }

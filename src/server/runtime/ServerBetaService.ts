@@ -15,6 +15,7 @@ import {
   type PidInfo,
 } from '../../supervisor/process-registry.js';
 import { sanitizeEnv } from '../../supervisor/env-sanitizer.js';
+import { ServerEnrollRoutes } from '../routes/v1/ServerEnrollRoutes.js';
 import { ServerV1PostgresRoutes } from '../routes/v1/ServerV1PostgresRoutes.js';
 import { loadCaSigner, type CaSigner } from '../security/ca-store.js';
 import { SessionsObservationsAdapter } from '../compat/SessionsObservationsAdapter.js';
@@ -204,6 +205,12 @@ export class ServerBetaService {
       // CLAUDE_MEM_SERVER_SESSION_POLICY). We do not duplicate it here.
     });
     server.registerRoutes(v1Routes);
+    // Self-service client enrollment (POST /v1/enroll), gated by a shared join
+    // secret. Disabled (404) unless CLAUDE_MEM_SERVER_ENROLL_SECRET is set.
+    server.registerRoutes(new ServerEnrollRoutes({
+      pool: this.graph.postgres.pool,
+      secret: process.env.CLAUDE_MEM_SERVER_ENROLL_SECRET?.trim() || null,
+    }));
 
     // Phase 9 — legacy compatibility adapters. These translate the old
     // `/api/sessions/observations` and `/api/sessions/summarize` worker
