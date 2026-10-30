@@ -104,6 +104,8 @@ services:
       CLAUDE_MEM_CA_CERT_FILE: /tls/ca.crt
       CLAUDE_MEM_CA_KEY_FILE: /tls/ca.key
       CLAUDE_MEM_SERVER_DATABASE_URL: ${CLAUDE_MEM_SERVER_DATABASE_URL:?CLAUDE_MEM_SERVER_DATABASE_URL is required (password URL-encoded)}
+      # Team join secret for self-service client enrollment (POST /v1/enroll). Empty = disabled.
+      CLAUDE_MEM_SERVER_ENROLL_SECRET: ${CLAUDE_MEM_SERVER_ENROLL_SECRET:-}
       CLAUDE_MEM_GENERATION_DISABLED: "true"
       CLAUDE_MEM_CHROMA_ENABLED: "false"
       CLAUDE_MEM_DOCKER: "1"

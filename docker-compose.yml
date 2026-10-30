@@ -118,6 +118,8 @@ services:
       CLAUDE_MEM_REDIS_MODE: docker
       CLAUDE_MEM_SERVER_DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
       CLAUDE_MEM_AUTH_MODE: api-key
+      # Team join secret for self-service client enrollment (POST /v1/enroll). Empty = disabled.
+      CLAUDE_MEM_SERVER_ENROLL_SECRET: ${CLAUDE_MEM_SERVER_ENROLL_SECRET:-}
       CLAUDE_MEM_CHROMA_ENABLED: "false"
       # The HTTP service does not consume BullMQ jobs; the worker container
       # does. This split keeps HTTP latency unaffected by provider calls.

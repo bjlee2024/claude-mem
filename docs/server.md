@@ -184,6 +184,38 @@ bash -lc '
 '
 ```
 
+#### 셀프 enroll (join secret)
+
+서버에 팀 공용 join secret을 설정하면, 운영자가 장치마다 토큰을 발급하지
+않아도 클라이언트가 설치 중에 스스로 키를 받아 갑니다. 서버 `.env`에 다음을
+추가하고, 빌드 후 이미지를 다시 만들어 재시작합니다:
+
+```sh
+echo "CLAUDE_MEM_SERVER_ENROLL_SECRET=$(openssl rand -hex 32)" >> .env
+npm run build
+docker compose -f docker-compose.my.yml up -d --build claude-mem-server
+```
+
+클라이언트는 서버 주소와 secret만으로 설치합니다:
+
+```sh
+npx @bjlee2024/claude-mem install --mode client \
+  --server-url http://<server-reachable-host>:37700 --join <secret>
+# 또는 env로 전달(설치 스크립트 등):
+CLAUDE_MEM_ENROLL_SECRET=<secret> npx @bjlee2024/claude-mem install --mode client --server-url http://<server-reachable-host>:37700
+```
+
+- 설치기가 `POST /v1/enroll`로 secret을 보내고, 서버는 `server enroll`과
+  같은 team-scoped 키(`memories:read`/`memories:write`)를 장치별로 발급합니다.
+- label 기본값은 `$USER@hostname`이며 `--label`로 바꿀 수 있습니다. label은
+  `api_keys.actor_id`(`system:server-enroll:<label>`)와 audit log에 기록됩니다.
+- secret이 유출되면 `.env`의 값을 바꾸고 재시작하면 됩니다. 이미 발급된
+  장치 키는 영향을 받지 않으며, 개별 장치는 `api-key revoke`로 막습니다.
+- `CLAUDE_MEM_SERVER_ENROLL_SECRET`이 비어 있으면 엔드포인트는 404를
+  반환합니다(기본값: 비활성).
+- 서버가 평문 HTTP라면 secret과 키가 네트워크에 평문으로 흐릅니다. 신뢰할 수
+  있는 망(사내망·tailnet)에서만 활성화하세요.
+
 …또는 raw 키를 클라이언트에 직접 전달:
 
 ```sh

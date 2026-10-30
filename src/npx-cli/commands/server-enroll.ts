@@ -73,3 +73,32 @@ export async function createEnrollment(
     token: encodeEnrollment({ url: input.serverUrl, key: rawKey }),
   };
 }
+
+/**
+ * Resolve the team to scope the enrollment key under. The install bootstrap
+ * creates a single "local-hook-team"; reuse it when present, otherwise fall
+ * back to the single existing team, otherwise create one. Team-scoping (not
+ * project-scoping) is what lets the minted key write to many per-repo projects.
+ */
+export async function ensureDefaultTeamId(pool: PostgresQueryable): Promise<string> {
+  const byName = await pool.query<{ id: string }>(
+    `SELECT id FROM teams WHERE name = $1 LIMIT 1`,
+    ['local-hook-team'],
+  );
+  if (byName.rows[0]) {
+    return byName.rows[0].id;
+  }
+  const any = await pool.query<{ id: string }>(
+    `SELECT id FROM teams ORDER BY created_at ASC LIMIT 1`,
+  );
+  if (any.rows[0]) {
+    console.warn(`[enroll] Warning: no 'local-hook-team' found; falling back to oldest team id=${any.rows[0].id}`);
+    return any.rows[0].id;
+  }
+  const { PostgresTeamsRepository } = await import('../../storage/postgres/teams.js');
+  const team = await new PostgresTeamsRepository(pool).create({
+    name: 'local-hook-team',
+    metadata: { source: 'server-enroll' },
+  });
+  return team.id;
+}

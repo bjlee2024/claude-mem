@@ -2,7 +2,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { spawnHidden } from '../../shared/spawn.js';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
+import { homedir, hostname, userInfo } from 'os';
 import { dirname, join } from 'path';
 import { SettingsDefaultsManager, type SettingsDefaults } from '../../shared/SettingsDefaultsManager.js';
 import { USER_SETTINGS_PATH } from '../../shared/paths.js';
@@ -17,7 +17,7 @@ import {
 } from '../install/setup-runtime.js';
 import { playBanner } from '../banner.js';
 import { normalizeRuntimeFlag, planServerRuntimeInstall } from './server-runtime-setup.js';
-import { decodeEnrollment } from '../../services/hooks/enrollment.js';
+import { decodeEnrollment, defaultEnrollLabel, requestSelfEnrollment } from '../../services/hooks/enrollment.js';
 import { ErrorSeverity } from '../install/error-taxonomy.js';
 import {
   createInstallSummary,
@@ -1322,6 +1322,10 @@ export interface InstallOptions {
   // `--server-url` + `--token`.
   enroll?: string;
   token?: string;
+  // Self-enrollment: `--join <secret>` (+ optional `--label`) trades the team
+  // join secret for a per-device key via POST /v1/enroll on `--server-url`.
+  join?: string;
+  label?: string;
   // Server-mode: install the local client/hooks alongside the backend (default true).
   withLocalClient?: boolean;
 }
@@ -1403,10 +1407,17 @@ async function runInstallCommandInner(options: InstallOptions, summary: InstallS
   // --mode yields the legacy runtime path below unchanged. Resolved before IDE
   // selection so `--mode server` without a local client can skip the IDE/hook
   // install entirely.
+  let enroll = options.enroll;
+  if (options.mode === 'client' && options.join && !enroll && !options.token) {
+    if (!options.serverUrl) throw new Error('--join requires --server-url');
+    const label = options.label ?? defaultEnrollLabel(userInfo().username, hostname());
+    enroll = await requestSelfEnrollment({ serverUrl: options.serverUrl, secret: options.join, label });
+    log.info(`Self-enrolled as ${pc.bold(label)}.`);
+  }
   const resolved = resolveInstallMode({
     mode: options.mode,
     runtime: options.runtime === 'server' ? 'server-beta' : options.runtime,
-    enroll: options.enroll,
+    enroll,
     serverUrl: options.serverUrl,
     token: options.token,
     withLocalClient: options.withLocalClient,
