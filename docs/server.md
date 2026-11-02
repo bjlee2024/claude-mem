@@ -187,13 +187,14 @@ bash -lc '
 #### 셀프 enroll (join secret)
 
 서버에 팀 공용 join secret을 설정하면, 운영자가 장치마다 토큰을 발급하지
-않아도 클라이언트가 설치 중에 스스로 키를 받아 갑니다. 서버 `.env`에 다음을
-추가하고, 빌드 후 이미지를 다시 만들어 재시작합니다:
+않아도 클라이언트가 설치 중에 스스로 키를 받아 갑니다. 서버의 `.env.local`에
+다음을 추가하고, 빌드 후 이미지를 다시 만들어 재시작합니다. 이 저장소의 `.env`는
+git으로 추적되므로 secret을 넣으면 안 됩니다. `.env.local`은 gitignore되어 있습니다:
 
 ```sh
-echo "CLAUDE_MEM_SERVER_ENROLL_SECRET=$(openssl rand -hex 32)" >> .env
+echo "CLAUDE_MEM_SERVER_ENROLL_SECRET=$(openssl rand -hex 32)" >> .env.local
 npm run build
-docker compose -f docker-compose.my.yml up -d --build claude-mem-server
+docker compose --env-file .env --env-file .env.local -f docker-compose.my.yml up -d --build --no-deps claude-mem-server
 ```
 
 클라이언트는 서버 주소와 secret만으로 설치합니다:
@@ -209,7 +210,7 @@ CLAUDE_MEM_ENROLL_SECRET=<secret> npx @bjlee2024/claude-mem install --mode clien
   같은 team-scoped 키(`memories:read`/`memories:write`)를 장치별로 발급합니다.
 - label 기본값은 `$USER@hostname`이며 `--label`로 바꿀 수 있습니다. label은
   `api_keys.actor_id`(`system:server-enroll:<label>`)와 audit log에 기록됩니다.
-- secret이 유출되면 `.env`의 값을 바꾸고 재시작하면 됩니다. 이미 발급된
+- secret이 유출되면 `.env.local`의 값을 바꾸고 위 명령으로 재시작하면 됩니다. 이미 발급된
   장치 키는 영향을 받지 않으며, 개별 장치는 `api-key revoke`로 막습니다.
 - `CLAUDE_MEM_SERVER_ENROLL_SECRET`이 비어 있으면 엔드포인트는 404를
   반환합니다(기본값: 비활성).
