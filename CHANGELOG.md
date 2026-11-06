@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [13.12.0] - 2026-11-06
+
+Adds self-service client enrollment, so operators no longer hand out a per-device enrollment token.
+
+## New: `install --join`
+
+```
+npx @bjlee2024/claude-mem install --mode client \
+  --server-url http://<server>:37700 --join <team-join-secret>
+```
+
+The installer exchanges a team-wide join secret for its **own per-device API key** via the new `POST /v1/enroll` endpoint, then continues the normal client install. (#23)
+
+- The label defaults to `user@hostname`; override it with `--label`. It is recorded in `api_keys.actor_id` (`system:server-enroll:<label>`) and in the audit log.
+- Keys stay per-device and individually revocable. Rotating the join secret does not affect keys already issued.
+- The secret can also come from `CLAUDE_MEM_ENROLL_SECRET` instead of `--join`.
+
+## Server setup
+
+The endpoint is **disabled by default** (404) until `CLAUDE_MEM_SERVER_ENROLL_SECRET` is set. In this repo `.env` is tracked by git, so put the secret in the gitignored `.env.local` (#24):
+
+```
+echo "CLAUDE_MEM_SERVER_ENROLL_SECRET=$(openssl rand -hex 32)" >> .env.local
+npm run build
+docker compose --env-file .env --env-file .env.local -f docker-compose.my.yml up -d --build --no-deps claude-mem-server
+```
+
+## Compatibility
+
+Existing clients keep working unchanged. `--enroll <token>`, `--server-url` + `--token`, and `server enroll` behave as before.
+
+## Notes
+
+If the server speaks plain HTTP, the join secret and issued keys travel unencrypted. Enable self-enrollment only on a trusted network (LAN or tailnet).
+
 ## [13.11.1] - 2026-10-24
 
 Fixes a Claude Code startup error from the claude-mem `SessionStart` hook.
