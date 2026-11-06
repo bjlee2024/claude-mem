@@ -577,17 +577,8 @@ export async function runServerBetaApiKeyCli(argv: string[]): Promise<void> {
       const params: unknown[] = teamFilter ? [teamFilter, limit, offset] : [limit, offset];
       const limitIdx = teamFilter ? 2 : 1;
       const offsetIdx = teamFilter ? 3 : 2;
-      const result = await pool.query<{
-        id: string;
-        team_id: string | null;
-        project_id: string | null;
-        scopes: unknown;
-        revoked_at: Date | null;
-        expires_at: Date | null;
-        last_used_at: Date | null;
-        created_at: Date;
-      }>(
-        `SELECT id, team_id, project_id, scopes, revoked_at, expires_at, last_used_at, created_at
+      const result = await pool.query<ServerKeyRow>(
+        `SELECT ${API_KEY_LIST_COLUMNS.join(', ')}
          FROM api_keys
          ${where}
          ORDER BY created_at DESC
@@ -600,14 +591,8 @@ export async function runServerBetaApiKeyCli(argv: string[]): Promise<void> {
         offset,
         count: result.rows.length,
         keys: result.rows.map(row => ({
-          id: row.id,
-          teamId: row.team_id,
-          projectId: row.project_id,
-          scopes: row.scopes,
+          ...serializeActiveServerKeyRow(row),
           status: row.revoked_at ? 'revoked' : 'active',
-          lastUsedAt: row.last_used_at?.toISOString() ?? null,
-          expiresAt: row.expires_at?.toISOString() ?? null,
-          createdAt: row.created_at.toISOString(),
         })),
       }, null, 2));
       return;
@@ -681,13 +666,20 @@ export async function migrateServerBetaApiKeyScopes(argv: string[]): Promise<voi
 // shaping of a key row the `keys` command emits, and it deliberately copies
 // only non-secret metadata — never `key_hash` or any raw key material. Exported
 // so a test can prove no secret field can leak regardless of the input row.
+// Columns that exist on the Postgres api_keys table (storage/postgres/schema.ts).
+// actor_id carries the device label (`system:server-enroll:<label>`).
+export const API_KEY_LIST_COLUMNS = [
+  'id', 'team_id', 'project_id', 'actor_id', 'scopes', 'revoked_at', 'expires_at', 'created_at',
+] as const;
+
 export interface ServerKeyRow {
   id: string;
   team_id: string | null;
   project_id: string | null;
+  actor_id: string;
   scopes: unknown;
+  revoked_at: Date | null;
   expires_at: Date | null;
-  last_used_at: Date | null;
   created_at: Date;
   // A leaked/extra secret column should NEVER appear in the output.
   key_hash?: string;
@@ -698,9 +690,9 @@ export function serializeActiveServerKeyRow(row: ServerKeyRow): Record<string, u
     id: row.id,
     teamId: row.team_id,
     projectId: row.project_id,
+    actorId: row.actor_id,
     scopes: row.scopes,
     status: 'active',
-    lastUsedAt: row.last_used_at?.toISOString() ?? null,
     expiresAt: row.expires_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
   };
@@ -727,16 +719,8 @@ export async function runServerBetaKeysCli(argv: string[]): Promise<void> {
     ? 'WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) AND team_id = $2'
     : 'WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())';
   const params: unknown[] = teamFilter ? [limit, teamFilter] : [limit];
-  const result = await pool.query<{
-    id: string;
-    team_id: string | null;
-    project_id: string | null;
-    scopes: unknown;
-    expires_at: Date | null;
-    last_used_at: Date | null;
-    created_at: Date;
-  }>(
-    `SELECT id, team_id, project_id, scopes, expires_at, last_used_at, created_at
+  const result = await pool.query<ServerKeyRow>(
+    `SELECT ${API_KEY_LIST_COLUMNS.join(', ')}
        FROM api_keys
        ${where}
        ORDER BY created_at DESC

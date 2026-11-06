@@ -232,9 +232,13 @@ npx @bjlee2024/claude-mem install --mode client \
 
 ### 3. 목록 조회 및 폐기
 
+서버 컨테이너 안에서 실행합니다. 호스트의 `claude-mem server api-key`는
+로컬 SQLite를 조회하므로 Postgres 키가 보이지 않습니다.
+
 ```sh
-claude-mem server api-key list           # id, name, prefix, scope, status — raw 키는 표시 안 됨
-claude-mem server api-key revoke <id>    # id는 `list`에서 확인
+docker exec -w /tmp claude-mem-claude-mem-server-1 bun /opt/claude-mem/scripts/server-beta-service.cjs server api-key list
+# → id, actorId(`system:server-enroll:<label>`), scopes, status — raw 키는 표시 안 됨
+docker exec -w /tmp claude-mem-claude-mem-server-1 bun /opt/claude-mem/scripts/server-beta-service.cjs server api-key revoke <id>
 ```
 
 `requirePostgresServerAuth`가 매 호출마다 해시로 행을 다시 로드하므로

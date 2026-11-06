@@ -177,7 +177,7 @@ npx @bjlee2024/claude-mem server enroll --url http://10.100.16.183:37700 --label
 npx @bjlee2024/claude-mem install --mode client --enroll <token>
 ```
 
-Verify connectivity any time with `npx @bjlee2024/claude-mem client status`. Revoke a device with `npx @bjlee2024/claude-mem server api-key revoke`.
+Verify connectivity any time with `npx @bjlee2024/claude-mem client status`. Revoke a device by running `server api-key list` / `server api-key revoke <id>` inside the server container (see [docs/server.md](docs/server.md)).
 
 → **상세 단계별 가이드: [서버 & 클라이언트 설치 가이드](#서버--클라이언트-설치-가이드)** (아래) — 서버 구축, 클라이언트 enrollment, 환경변수 레퍼런스, 검증 전 과정.
 → **Deployment deep-dive: [Server & Client Modes](docs/public/server-client-modes.mdx)** — Tailscale topology, systemd unit, subscription/Ollama generation, and troubleshooting.
@@ -371,8 +371,9 @@ npx @bjlee2024/claude-mem client status
 **B6. 디바이스 폐기**
 
 ```bash
-npx @bjlee2024/claude-mem server api-key list      # 디바이스의 키 id 확인 (raw 키는 절대 표시되지 않음)
-npx @bjlee2024/claude-mem server api-key revoke <id>
+# 서버 컨테이너 안에서 실행 — actorId의 label로 디바이스 키 id 확인 (raw 키는 절대 표시되지 않음)
+docker exec -w /tmp claude-mem-claude-mem-server-1 bun /opt/claude-mem/scripts/server-beta-service.cjs server api-key list
+docker exec -w /tmp claude-mem-claude-mem-server-1 bun /opt/claude-mem/scripts/server-beta-service.cjs server api-key revoke <id>
 ```
 
 폐기는 해당 키의 다음 요청부터 적용되며(`401`/`403`), 다른 디바이스에는 영향이 없습니다.
