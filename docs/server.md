@@ -188,8 +188,8 @@ bash -lc '
 
 서버에 팀 공용 join secret을 설정하면, 운영자가 장치마다 토큰을 발급하지
 않아도 클라이언트가 설치 중에 스스로 키를 받아 갑니다. 서버의 `.env.local`에
-다음을 추가하고, 빌드 후 이미지를 다시 만들어 재시작합니다. 이 저장소의 `.env`는
-git으로 추적되므로 secret을 넣으면 안 됩니다. `.env.local`은 gitignore되어 있습니다:
+다음을 추가하고, 빌드 후 이미지를 다시 만들어 재시작합니다. `.env`와 `.env.local`은
+모두 gitignore되어 있으며, 새로 설치할 때는 `.env.example`을 복사해 씁니다:
 
 ```sh
 echo "CLAUDE_MEM_SERVER_ENROLL_SECRET=$(openssl rand -hex 32)" >> .env.local
