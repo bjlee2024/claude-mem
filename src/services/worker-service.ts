@@ -20,6 +20,7 @@ import { configureSupervisorSignalHandlers, getSupervisor, startSupervisor } fro
 import { sanitizeEnv } from '../supervisor/env-sanitizer.js';
 
 import { ensureWorkerStarted as ensureWorkerStartedShared, type WorkerStartResult } from './worker-spawner.js';
+import { resolveRuntimeContext } from './hooks/runtime-selector.js';
 import { acquireSpawnLock, releaseSpawnLock } from '../shared/worker-spawn-gate.js';
 import { captureEvent, shutdownTelemetry } from './telemetry/telemetry.js';
 import { collectInstallStats } from './telemetry/install-stats.js';
@@ -753,6 +754,10 @@ export class WorkerService implements WorkerRef {
 }
 
 export async function ensureWorkerStarted(port: number): Promise<WorkerStartResult> {
+  // Client/server-beta hooks talk to the remote server, so a local worker would
+  // only sit idle (install and the MCP server already skip it). An incomplete
+  // remote config resolves to 'worker' and still gets one.
+  if (resolveRuntimeContext().runtime !== 'worker') return 'ready';
   return ensureWorkerStartedShared(port, __filename);
 }
 
