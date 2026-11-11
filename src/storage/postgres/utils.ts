@@ -94,19 +94,27 @@ const LONE_SURROGATE_UNIT =
 // keeping valid pairs literal, so any \udXXX in the output is unpaired. This
 // backstops object KEYS, which a stringify replacer cannot rewrite.
 const LONE_SURROGATE_ESCAPE = /\\ud[89a-f][0-9a-f]{2}/gi;
+// U+0000 as serialized by JSON.stringify (`\u0000`). Postgres `jsonb` rejects it
+// with `unsupported Unicode escape sequence / \u0000 cannot be converted to
+// text` — e.g. tool output quoting source code that contains a NUL byte. The
+// lookbehind requires an even run of backslashes before it, so a literal
+// backslash followed by "u0000" (serialized as `\\u0000`) is left untouched.
+// Applies to string values and object keys alike.
+const NUL_ESCAPE = /(?<=(?:^|[^\\])(?:\\\\)*)\\u0000/g;
 
 /**
  * Serialize a value to JSON text safe for a Postgres `jsonb` parameter.
  * Replaces any lone UTF-16 surrogate — in string values (via a replacer) and in
- * object keys (via an escape backstop) — with U+FFFD, so the insert can never
- * fail with "invalid input syntax for type json". Valid surrogate pairs (real
- * emoji) are preserved. Null/undefined default to `{}`.
+ * object keys (via an escape backstop) — and any U+0000 with U+FFFD, so the
+ * insert can never fail with "invalid input syntax for type json" or
+ * "unsupported Unicode escape sequence". Valid surrogate pairs (real emoji) are
+ * preserved. Null/undefined default to `{}`.
  */
 export function toJsonbText(value: unknown): string {
   const json = JSON.stringify(value ?? {}, (_key, v) =>
     typeof v === 'string' ? v.replace(LONE_SURROGATE_UNIT, '�') : v
   );
-  return json.replace(LONE_SURROGATE_ESCAPE, '\\ufffd');
+  return json.replace(LONE_SURROGATE_ESCAPE, '\\ufffd').replace(NUL_ESCAPE, '\\ufffd');
 }
 
 export function deterministicKey(parts: readonly unknown[]): string {

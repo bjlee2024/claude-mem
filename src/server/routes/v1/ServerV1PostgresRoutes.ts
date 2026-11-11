@@ -1354,6 +1354,15 @@ export class ServerV1PostgresRoutes implements RouteHandler {
       res.status(403).json({ error: 'Forbidden', message });
       return;
     }
+    // SQLSTATE class 22 (data exception) is deterministic for the payload: a
+    // retry can never succeed. Answer 4xx so thin clients drop the record
+    // instead of re-spooling it forever (they retry 5xx).
+    const sqlState = (error as { code?: unknown } | null)?.code;
+    if (typeof sqlState === 'string' && sqlState.startsWith('22')) {
+      logger.error('SYSTEM', `${action} rejected (data exception)`, { error: message, sqlState });
+      res.status(422).json({ error: 'UnprocessableEntity', message });
+      return;
+    }
     logger.error('SYSTEM', `${action} failed`, { error: message });
     res.status(500).json({ error: 'InternalError', message: 'Failed to persist event' });
   }

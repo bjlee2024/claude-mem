@@ -48,6 +48,23 @@ describe('toJsonbText — Postgres jsonb-safe serialization', () => {
     expect(() => JSON.parse(out)).not.toThrow();
   });
 
+  // Postgres jsonb rejects U+0000: "unsupported Unicode escape sequence /
+  // \u0000 cannot be converted to text".
+  it('neutralizes U+0000 in string values and object keys', () => {
+    const out = toJsonbText({ text: 'return `${projectId}\u0000${id}`', ['k\u0000']: ['a\u0000\u0000b'] });
+    expect(out).not.toContain('\\u0000');
+    const parsed = JSON.parse(out);
+    expect(parsed.text).toBe('return `${projectId}�${id}`');
+    expect(parsed['k�']).toEqual(['a��b']);
+  });
+
+  it('leaves a literal backslash followed by "u0000" untouched', () => {
+    const literal = 'value.replace(/[\\u0000-\\u001f]/g)'; // source text, no NUL
+    expect(JSON.parse(toJsonbText({ text: literal })).text).toBe(literal);
+    const mixed = '\\\u0000'; // backslash, then a real NUL
+    expect(JSON.parse(toJsonbText({ text: mixed })).text).toBe('\\�');
+  });
+
   it('defaults null/undefined to an empty object', () => {
     expect(toJsonbText(undefined)).toBe('{}');
     expect(toJsonbText(null)).toBe('{}');
