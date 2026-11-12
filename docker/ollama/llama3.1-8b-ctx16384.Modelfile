@@ -1,0 +1,17 @@
+# claude-mem worker 관찰 생성용 llama3.1:8b 파생 모델 (num_ctx 16384).
+#
+# 이유: worker는 OpenAI 호환 /v1 엔드포인트를 쓰므로 요청별 num_ctx를 넘길 수
+# 없고, ollama는 llama3.1:8b를 기본 n_ctx=4096으로 로드해 프롬프트를 절단했다.
+#
+# 근거 (2026-11-11, ollama 0.30.5, RTX 3070 Ti 8GB, FLASH_ATTENTION=1, KV q8_0):
+# - 24시간 claude-mem 요청 466건 중 4096 초과로 절단된 것 73건(15.7%).
+#   절단 프롬프트 분포: p50 5382 / p90 16761 / p99 37174 / max 82585 토큰.
+#   상한별 잔여 절단: 16384 → 9건(1.9%), 32768 → 2건(0.4%).
+#   (최대값은 session_summary job: 세션의 미처리 이벤트 전체가 들어가 상한이 없다.)
+# - 실측 적재: num_ctx 16384 → 5.9GB, 100% GPU / 32768 → 7.6GB, 13%/87% CPU/GPU.
+#   → 전부 GPU에 올라가는 최대값인 16384를 선택.
+#
+# 생성: ollama create llama3.1:8b-ctx16384 -f docker/ollama/llama3.1-8b-ctx16384.Modelfile
+# 사용: .env 의 CLAUDE_MEM_SERVER_MODEL=llama3.1:8b-ctx16384
+FROM llama3.1:8b
+PARAMETER num_ctx 16384
